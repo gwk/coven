@@ -1,0 +1,20 @@
+writeup v0
+Dedicated to the public domain under CC0: https://creativecommons.org/publicdomain/zero/1.0/.
+
+
+# Cove
+
+Cove is a simple test coverage harness for Python 3.
+
+
+# License
+
+Cove is dedicated to the public domain. It is written and maintained by George King.
+
+
+# Usage
+
+
+# Issues
+
+Please file issues to the github repository: github.com/gwk/cove.
