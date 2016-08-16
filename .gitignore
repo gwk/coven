@@ -1,0 +1,12 @@
+# finder.
+.DS_Store
+
+# python.
+__pycache__
+
+# cove.
+_build
+_misc
+gh-pages
+cove.egg-info
+todo.txt
