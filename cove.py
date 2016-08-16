@@ -49,7 +49,7 @@ def trace(cmd, arg_targets, output_path):
   try:
     run_path(cmd_head, run_name='__main__')
   except FileNotFoundError as e:
-    failF('cove error: {}', e)
+    failF('cove error: could not find command to run: {!r}', cmd_head)
   except SystemExit as e:
     exit_code = e.code
   finally:
@@ -214,6 +214,7 @@ def report_path(path, code_insts):
 
   with open(path) as f:
     line_count = 0
+    line = '\n' # satisfies the missing final newline check if file is empty.
     for i, line in enumerate(f, 1):
       if i < lead: continue
       assert i <= tail_last
@@ -223,9 +224,11 @@ def report_path(path, code_insts):
         try: lead, start, last, tail_last = next_interval()
         except StopIteration:
           lead = 1<<63 # continue iterating to get line_count.
-        if i < lead:
-          outL()
+        else:
+          if i < lead:
+            outL()
     line_count = i
+    if not line.endswith('\n'): outL() # handle missing final newline.
 
   outFL('{}: {} lines; {} traceable: {} untraced.\n',
     path, line_count, traceable_count, len(untraced_lines))
