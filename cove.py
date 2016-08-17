@@ -12,7 +12,7 @@ from sys import stdout, settrace
 from pprint import pprint
 from types import CodeType
 
-from pithy.fs import abs_path, path_dir, path_name, path_name_stem
+from pithy.fs import abs_path, path_dir, path_name, path_name_stem, path_rel_to_current_or_abs
 from pithy.io import errFL, errL, errSL, fail, failF, outZ, outF, outFL, outL, outSL
 from pithy.seq import seq_int_intervals
 from pithy.task import run
@@ -127,7 +127,7 @@ def gen_target_paths(targets, cmd_head):
 
 
 def report(target_paths, trace_sets):
-  errL('\ncove report:')
+  outL('\ncove report:')
   path_code_insts = gen_path_code_insts(trace_sets)
   for target, paths in sorted(target_paths.items()):
     if not paths:
@@ -193,7 +193,8 @@ def visit_codes(path, codes, traceable_lines, dbg):
 
 
 def report_path(path, code_insts):
-  outZ(path, ':')
+  rel_path = path_rel_to_current_or_abs(path)
+  outZ('\n', rel_path, ':')
   if not code_insts:
     outL(' NO COVERAGE.')
     return
@@ -230,8 +231,8 @@ def report_path(path, code_insts):
     line_count = i
     if not line.endswith('\n'): outL() # handle missing final newline.
 
-  outFL('{}: {} lines; {} traceable: {} untraced.\n',
-    path, line_count, traceable_count, len(untraced_lines))
+  outFL('{}: {} lines; {} traceable: {} untraced.',
+    rel_path, line_count, traceable_count, len(untraced_lines))
 
 
 def write_coverage(output_path, target_paths, trace_set):
