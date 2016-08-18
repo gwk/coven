@@ -114,6 +114,8 @@ def install_trace(targets, dbg):
       #print('trace_callback: d:{} e:{} p:{} l:{} i:{}'.format(stack_depth, event, code.co_filename, frame.f_lineno, frame.f_lasti), file=stderr)
       traces.add((frame.f_code, frame.f_lasti, event))
       return cove_tracer
+    else:
+      return None # do not trace this scope.
 
   settrace(cove_tracer)
   return traces
