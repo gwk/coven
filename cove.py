@@ -175,9 +175,9 @@ def calculate_module_coverage(path, code_insts, dbg):
     inst_lines = code_inst_lines[code]
     for inst, event in sorted(values):
       if dbg: errFL('  trace inst: {:3}; event: {}', inst, event)
-      try: line = inst_lines[inst]
-      except KeyError: assert inst == -1 and event == 'call'
-      else: traced_lines.add(line)
+      if event != 'line': continue
+      line = inst_lines[inst]
+      traced_lines.add(line)
   return len(traceable_lines), (traceable_lines - traced_lines)
 
 
