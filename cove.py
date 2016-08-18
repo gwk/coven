@@ -1,26 +1,21 @@
 #!/usr/bin/env python3
 
-import argparse
-import marshal
+# NOTE: no other top-level imports allowed.
+# any modules imported prior to the calls to install_trace and run_path
+# will not report coverage fully, because their <module> code objects will not be captured.
+# therefore, we import only stdlib modules that we absolutely need.
 import sys
-
-from collections import defaultdict, namedtuple
-from dis import findlinestarts, findlabels, get_instructions
+from argparse import ArgumentParser
 from inspect import getmodule
-from runpy import run_module, run_path
-from sys import stdout, settrace
-from pprint import pprint
-from types import CodeType
-
-from pithy.fs import abs_path, path_dir, path_name, path_name_stem, path_rel_to_current_or_abs
-from pithy.io import errFL, errL, errSL, fail, failF, outZ, outF, outFL, outL, outSL
-from pithy.seq import seq_int_intervals
-from pithy.task import run
+from os.path import abspath
+from runpy import run_path
+from sys import stderr, stdout, settrace
 
 
 def main():
-  arg_parser = argparse.ArgumentParser(description='cove: code coverage harness.')
+  arg_parser = ArgumentParser(description='cove: code coverage harness.')
   arg_parser.add_argument('-targets', nargs='*', default=[])
+  arg_parser.add_argument('-dbg', action='store_true')
   excl = arg_parser.add_mutually_exclusive_group()
   excl.add_argument('-coalesce', nargs='+')
   trace_group = excl.add_argument_group('trace')
@@ -29,23 +24,23 @@ def main():
   args = arg_parser.parse_args()
 
   if args.coalesce:
-    coalesce(args.coalesce, arg_targets=args.targets)
+    coalesce(args.coalesce, arg_targets=args.targets, dbg=args.dbg)
   else:
     if not args.cmd:
       arg_parser.error('please specify a command.')
-    trace(cmd=args.cmd, arg_targets=args.targets, output_path=args.output)
+    trace(cmd=args.cmd, arg_targets=args.targets, output_path=args.output, dbg=args.dbg)
 
 
-def trace(cmd, arg_targets, output_path):
-  cmd_head = abs_path(cmd[0])
+def trace(cmd, arg_targets, output_path, dbg):
+  'NOTE: this function must not import or depend on any library that we might wish to trace with cove.'
+  cmd_head = abspath(cmd[0])
   targets = set(arg_targets or ['__main__'])
-  # although run_module and run_path alter sys.argv[0],
+  # although run_path alters sys.argv[0],
   # we need to replace all of argv to provide the correct arguments.
   orig_argv = sys.argv.copy()
   sys.argv = cmd.copy()
-  # TODO: patch and restore sys.modules['__main__'] also?
   exit_code = 0
-  trace_set = install_trace(targets)
+  trace_set = install_trace(targets, dbg=dbg)
   try:
     run_path(cmd_head, run_name='__main__')
   except FileNotFoundError as e:
@@ -60,21 +55,24 @@ def trace(cmd, arg_targets, output_path):
     write_coverage(output_path=output_path, target_paths=target_paths, trace_set=trace_set)
     exit(exit_code)
   else:
-    report(target_paths=target_paths, trace_sets=[trace_set])
+    report(target_paths=target_paths, trace_sets=[trace_set], dbg=dbg)
 
 
-def install_trace(targets):
+def install_trace(targets, dbg):
+  'NOTE: this function must not import or depend on any library that we might wish to trace with cove.'
+
   traces = set()
   file_name_filter = {}
 
   def is_code_path_targeted(code):
     module = getmodule(code)
+    #if dbg: print('cove.is_code_path_targeted: {}:{} -> {}'.format(code.co_filename, code.co_name, module), file=stderr)
     if module is None: return False # probably a python builtin; not traceable.
     # note: the module filename may not equal the code filename.
     # example: .../python3.5/collections/abc.py != .../python3.5/_collections_abc.py
     # thus the following check sometimes fires, but it seems acceptable.
-    #if module.__file__ != code.co_filename:
-    #  errFL('MODULE FILE: {} != CODE FILE: {}', module.__file__, code.co_filename)
+    #if dbg and module.__file__ != code.co_filename:
+    #  print('  note: module file: {} != code file: {}'.format(module.__file__, code.co_filename), file=stderr)
     is_target = (module.__name__ in targets)
     return is_target
 
@@ -87,7 +85,7 @@ def install_trace(targets):
       is_target = is_code_path_targeted(code)
       file_name_filter[path] = is_target
     if is_target:
-      #errFL("trace_callback: d:{} e:{} p:{} l:{} i:{}", stack_depth, event, code.co_filename, frame.f_lineno, frame.f_lasti)
+      #print('trace_callback: d:{} e:{} p:{} l:{} i:{}'.format(stack_depth, event, code.co_filename, frame.f_lineno, frame.f_lasti), file=stderr)
       traces.add((frame.f_code, frame.f_lasti, event))
       return cove_tracer
 
@@ -102,31 +100,39 @@ def gen_target_paths(targets, cmd_head):
   The values are sequences to allow __main__ to map to multiple paths,
   which can occur during coalescing.
   '''
-  target_paths = defaultdict(list)
-  for target in targets:
-    if target.endswith('.*'): # need to import all modules under wildcard in order to find them.
-      target_base = path_name_stem(target)
-      module = sys.modules.get(target_base)
-      if module:
-        target_paths[target_base].append(module.__file__)
+  from collections import defaultdict
+  from pithy.fs import abs_path
+  target_paths = defaultdict(set)
+  def add_target(target):
+    paths = target_paths[target] # always add target key and empty list to the dictionary.
+    try: module = sys.modules[target]
+    except KeyError: return
+    else: paths.add(module.__file__)
+
+  for i, target in enumerate(targets, 1):
+    if not target: failF('argument target {} is empty.', i)
+    # wildcards are denoted by a trailing '.';
+    # we do not use '.*' because that will sometimes get expanded by bash, which is confusing.
+    if target[-1] == '.': # need to import all modules under wildcard in order to find them.
+      target_base = target[:-1]
       import_str = 'from {} import *'.format(target_base)
       try: exec(import_str)
-      except (SyntaxError, ImportError): failF('invalid target: {!r}', target)
-      prefix = target[:-1]
+      except (SyntaxError, ImportError): failF('invalid wildcard target: {!r}', target)
+      add_target(target_base)
+      prefix = target[:-1] # clip the trailing star.
       for (name, module) in sys.modules.items():
         if name.startswith(prefix):
-          target_paths[name].append(module.__file__)
+          target_paths[name].add(module.__file__)
     else: # regular target.
-      module = sys.modules.get(target)
-      if module:
-        target_paths[target].append(module.__file__)
+      add_target(target)
   if '__main__' in target_paths:
      # sys.modules['__main__'] points to cove; we want cmd_head.
-    target_paths['__main__'] = [abs_path(cmd_head)]
+    target_paths['__main__'] = {abs_path(cmd_head)}
   return dict(target_paths)
 
 
-def report(target_paths, trace_sets):
+def report(target_paths, trace_sets, dbg):
+  from pithy.io import outFL, outL
   outL('\ncove report:')
   path_code_insts = gen_path_code_insts(trace_sets)
   for target, paths in sorted(target_paths.items()):
@@ -135,10 +141,11 @@ def report(target_paths, trace_sets):
       continue
     for path in sorted(paths):
       code_insts = path_code_insts[path]
-      report_path(path, code_insts)
+      report_path(target, path, code_insts, dbg)
 
 
 def gen_path_code_insts(trace_sets):
+  from collections import defaultdict
   path_code_insts = defaultdict(lambda: defaultdict(list)) # path -> code -> inst offsets.
   for trace_set in trace_sets:
     for code, inst, event in trace_set:
@@ -147,13 +154,13 @@ def gen_path_code_insts(trace_sets):
   return path_code_insts
 
 
-def calculate_module_coverage(path, code_insts):
-  dbg = False
+def calculate_module_coverage(path, code_insts, dbg):
+  from pithy.io import errFL
   traceable_lines = set()
   traced_lines = set()
   code_inst_lines  = visit_codes(path, set(code_insts.keys()), traceable_lines, dbg=dbg)
   for code, values in code_insts.items():
-    if dbg: errFL('code: {}: {}', path, code.co_name)
+    if dbg: errFL('\ncode: {}: {}', path, code.co_name)
     inst_lines = code_inst_lines[code]
     for inst, event in sorted(values):
       if dbg: errFL('  trace inst: {:3}; event: {}', inst, event)
@@ -164,10 +171,13 @@ def calculate_module_coverage(path, code_insts):
 
 
 def visit_codes(path, codes, traceable_lines, dbg):
+  from dis import get_instructions
+  from types import CodeType
+  from pithy.io import errFL
   code_inst_lines = {}
   while codes:
     code = codes.pop()
-    if dbg: errFL('code: {}: {}', path, code.co_name)
+    if dbg: errFL('\ncode: {}: {}', path, code.co_name)
     assert code not in code_inst_lines
     inst_lines = {}
     code_inst_lines[code] = inst_lines
@@ -183,7 +193,7 @@ def visit_codes(path, codes, traceable_lines, dbg):
         if sub not in code_inst_lines: # not yet visited.
           codes.add(sub)
       if dbg:
-        errFL('  inst: {:3} line:{:>4} {:3} {:14} {}',
+        errFL('  inst: {:3} line:{:>4} {:3} {:14} {!r}',
           inst.offset,
           ('' if l is None else l),
           ('DST' if inst.is_jump_target else ''),
@@ -192,13 +202,16 @@ def visit_codes(path, codes, traceable_lines, dbg):
   return code_inst_lines
 
 
-def report_path(path, code_insts):
+def report_path(target, path, code_insts, dbg):
+  from pithy.io import outF, outL, outFL
+  from pithy.seq import seq_int_intervals
+  from pithy.fs import path_rel_to_current_or_abs
   rel_path = path_rel_to_current_or_abs(path)
-  outZ('\n', rel_path, ':')
+  outF('\n{}: {}:', target, rel_path)
   if not code_insts:
     outL(' NO COVERAGE.')
     return
-  traceable_count, untraced_lines = calculate_module_coverage(path, code_insts)
+  traceable_count, untraced_lines = calculate_module_coverage(path, code_insts, dbg=dbg)
   ctx_lead = 4
   ctx_tail = 2
   intervals = seq_int_intervals(untraced_lines)
@@ -231,11 +244,12 @@ def report_path(path, code_insts):
     line_count = i
     if not line.endswith('\n'): outL() # handle missing final newline.
 
-  outFL('{}: {} lines; {} traceable: {} untraced.',
-    rel_path, line_count, traceable_count, len(untraced_lines))
+  outFL('{}: {}: {} lines; {} traceable: {} untraced.',
+    target, rel_path, line_count, traceable_count, len(untraced_lines))
 
 
 def write_coverage(output_path, target_paths, trace_set):
+  import marshal
   data = {
     'target_paths': target_paths,
     'trace_set': trace_set
@@ -244,8 +258,12 @@ def write_coverage(output_path, target_paths, trace_set):
     marshal.dump(data, f)
 
 
-def coalesce(trace_paths, arg_targets):
+def coalesce(trace_paths, arg_targets, dbg):
+  import marshal
+  from collections import defaultdict
   target_paths = defaultdict(set)
+  for arg_target in arg_targets:
+    target_paths[arg_target]
   trace_sets = []
   for trace_path in trace_paths:
     with open(trace_path, 'rb') as f:
@@ -254,7 +272,7 @@ def coalesce(trace_paths, arg_targets):
         if arg_targets and target not in arg_targets: continue
         target_paths[target].update(paths)
       trace_sets.append(data['trace_set'])
-  report(target_paths, trace_sets)
+  report(target_paths, trace_sets, dbg=dbg)
 
 
 if __name__ == '__main__': main()
