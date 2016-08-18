@@ -176,7 +176,7 @@ def calculate_module_coverage(path, code_insts, dbg):
       try: line = inst_lines[inst]
       except KeyError: assert inst == -1 and event == 'call'
       else: traced_lines.add(line)
-  return len(traceable_lines), sorted(traceable_lines - traced_lines)
+  return len(traceable_lines), (traceable_lines - traced_lines)
 
 
 def visit_codes(path, codes, traceable_lines, dbg):
@@ -215,45 +215,57 @@ def report_path(target, path, code_insts, dbg):
   from pithy.io import  outF, outFL, outL
   from pithy.seq import seq_int_intervals
   from pithy.fs import path_rel_to_current_or_abs
+
   rel_path = path_rel_to_current_or_abs(path)
   if not code_insts:
     outFL('\n{}: {}: NO COVERAGE.', target, rel_path)
     return
+
   traceable_count, untraced_lines = calculate_module_coverage(path, code_insts, dbg=dbg)
+  if not untraced_lines:
+    outFL('\n{}: {}: covered.', target, rel_path)
+    return
+
+  lines = open(path).readlines()
+  ignored_lines = set(i for i, l in enumerate(lines, 1) if l.endswith('#no-cov!\n'))
+  if untraced_lines == ignored_lines:
+    outFL('\n{}: {}: {} lines; {} traceable; {} ignored.',
+      target, rel_path, len(lines), traceable_count, len(ignored_lines))
+    return
+
+  outFL('\n{}: {}:', target, rel_path)
+
   ctx_lead = 4
   ctx_tail = 2
-  intervals = seq_int_intervals(untraced_lines)
+  intervals = seq_int_intervals(untraced_lines ^ ignored_lines)
 
   def next_interval():
     i = next(intervals)
     return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
 
-  try: lead, start, last, tail_last = next_interval()
-  except StopIteration:
-    outFL('\n{}: {}: covered.', target, rel_path)
-    return
+  lead, start, last, tail_last = next_interval()
+  uncovered_count = 0
+  ignored_but_covered_count = 0
+  line = '\n' # satisfies the missing final newline check if file is empty.
+  for i, line in enumerate(lines, 1):
+    if i < lead: continue
+    assert i <= tail_last
+    if i in untraced_lines:
+      symbol = '!'
+      uncovered_count += 1
+    elif i in ignored_lines:
+      symbol = '?'
+      ignored_but_covered_count += 1
+    else:
+      symbol = ' '
+    outF('{:>4d}{} {}', i, symbol, line)
+    if i == tail_last:
+      try: lead, start, last, tail_last = next_interval()
+      except StopIteration: break
+  if not line.endswith('\n'): outL() # handle missing final newline.
 
-  outFL('\n{}: {}:', target, rel_path)
-  with open(path) as f:
-    line_count = 0
-    line = '\n' # satisfies the missing final newline check if file is empty.
-    for i, line in enumerate(f, 1):
-      if i < lead: continue
-      assert i <= tail_last
-      unexecuted = (start <= i <= last)
-      outF('{:>4d}{} {}', i, ('!' if unexecuted else ' '), line)
-      if i == tail_last:
-        try: lead, start, last, tail_last = next_interval()
-        except StopIteration:
-          lead = 1<<63 # continue iterating to get line_count.
-        else:
-          if i < lead:
-            outL()
-    line_count = i
-    if not line.endswith('\n'): outL() # handle missing final newline.
-
-  outFL('{}: {}: {} lines; {} traceable: {} untraced.',
-    target, rel_path, line_count, traceable_count, len(untraced_lines))
+  outFL('{}: {}: {} lines; {} traceable; {} IGNORED BUT COVERED; {} UNCOVERED.',
+    target, rel_path, len(lines), traceable_count, ignored_but_covered_count, uncovered_count)
 
 
 def write_coverage(output_path, target_paths, trace_set):
