@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
-# NOTE: no other top-level imports allowed.
-# any modules imported prior to the calls to install_trace and run_path
+# Note: any modules imported prior to the calls to install_trace and run_path
 # will not report coverage fully, because their <module> code objects will not be captured.
-# therefore, we import only stdlib modules that we absolutely need.
+# Therefore, we import only stdlib modules that we need.
+import marshal
 import sys
+from collections import defaultdict
+from dis import get_instructions, hasjabs, hasjrel
 from argparse import ArgumentParser
 from inspect import getmodule
 from os.path import abspath
 from runpy import run_path
 from sys import stderr, stdout, settrace
+from types import CodeType
 
 
 def main():
@@ -156,7 +159,6 @@ def report(target_paths, trace_sets, dbg):
 
 
 def gen_path_code_insts(trace_sets):
-  from collections import defaultdict
   path_code_insts = defaultdict(lambda: defaultdict(list)) # path -> code -> inst offsets.
   for trace_set in trace_sets:
     for code, inst, event in trace_set:
@@ -166,30 +168,27 @@ def gen_path_code_insts(trace_sets):
 
 
 def calculate_module_coverage(path, code_insts, dbg):
-  from pithy.io import errFL
   traceable_lines = set()
   traced_lines = set()
   code_inst_lines  = visit_codes(path, set(code_insts.keys()), traceable_lines, dbg=dbg)
   for code, values in code_insts.items():
-    if dbg: errFL('\ncode: {}:{}', path, code.co_name)
+    if dbg: print('\ncode: {}:{}'.format(path, code.co_name), file=stderr)
     inst_lines = code_inst_lines[code]
     for inst, event in sorted(values):
-      if dbg: errFL('  trace inst: {:3}; event: {}', inst, event)
+      if dbg: print('  trace inst: {:3}; event: {}'.format(inst, event), file=stderr)
       if event != 'line': continue
       line = inst_lines[inst]
       traced_lines.add(line)
   return len(traceable_lines), (traceable_lines - traced_lines)
 
 
+jmp_opcodes = set(hasjabs + hasjrel)
+
 def visit_codes(path, codes, traceable_lines, dbg):
-  from dis import get_instructions, hasjabs, hasjrel
-  from types import CodeType
-  from pithy.io import errFL
-  jmp_opcodes = set(hasjabs + hasjrel)
   code_inst_lines = {}
   while codes:
     code = codes.pop()
-    if dbg: errFL('\ncode: {}:{}', path, code.co_name)
+    if dbg: print('\ncode: {}:{}'.format(path, code.co_name), file=stderr)
     assert code not in code_inst_lines
     inst_lines = {}
     code_inst_lines[code] = inst_lines
@@ -208,12 +207,12 @@ def visit_codes(path, codes, traceable_lines, dbg):
         jmp = ('DST' if inst.is_jump_target else '')
         if inst.opcode in jmp_opcodes:
           jmp = ('S,D' if jmp else 'SRC')
-        errFL('  inst: {:4} line:{:>4} {:3} {:26} {!r}',
+        print('  inst: {:4} line:{:>4} {:3} {:26} {!r}'.format(
           inst.offset,
           ('' if l is None else l),
           jmp,
           inst.opname,
-          inst.argval)
+          inst.argval), file=stderr)
   return code_inst_lines
 
 
@@ -276,7 +275,6 @@ def report_path(target, path, code_insts, dbg):
 
 
 def write_coverage(output_path, target_paths, trace_set):
-  import marshal
   data = {
     'target_paths': target_paths,
     'trace_set': trace_set
@@ -286,8 +284,6 @@ def write_coverage(output_path, target_paths, trace_set):
 
 
 def coalesce(trace_paths, arg_targets, dbg):
-  import marshal
-  from collections import defaultdict
   target_paths = defaultdict(set)
   for arg_target in arg_targets:
     target_paths[arg_target]
