@@ -182,9 +182,10 @@ def calculate_module_coverage(path, code_insts, dbg):
 
 
 def visit_codes(path, codes, traceable_lines, dbg):
-  from dis import get_instructions
+  from dis import get_instructions, hasjabs, hasjrel
   from types import CodeType
   from pithy.io import errFL
+  jmp_opcodes = set(hasjabs + hasjrel)
   code_inst_lines = {}
   while codes:
     code = codes.pop()
@@ -204,16 +205,20 @@ def visit_codes(path, codes, traceable_lines, dbg):
         if sub not in code_inst_lines: # not yet visited.
           codes.add(sub)
       if dbg:
-        errFL('  inst: {:3} line:{:>4} {:3} {:14} {!r}',
+        jmp = ('DST' if inst.is_jump_target else '')
+        if inst.opcode in jmp_opcodes:
+          jmp = ('S,D' if jmp else 'SRC')
+        errFL('  inst: {:4} line:{:>4} {:3} {:26} {!r}',
           inst.offset,
           ('' if l is None else l),
-          ('DST' if inst.is_jump_target else ''),
+          jmp,
           inst.opname,
           inst.argval)
   return code_inst_lines
 
 
 def report_path(target, path, code_insts, dbg):
+  from pithy.ansi import TXT_R, TXT_Y, RST
   from pithy.io import  outF, outFL, outL
   from pithy.seq import seq_int_intervals
   from pithy.fs import path_rel_to_current_or_abs
@@ -228,8 +233,8 @@ def report_path(target, path, code_insts, dbg):
     outFL('\n{}: {}: covered.', target, rel_path)
     return
 
-  lines = open(path).readlines()
-  ignored_lines = set(i for i, l in enumerate(lines, 1) if l.endswith('#no-cov!\n'))
+  lines = [line.rstrip() for line in open(path).readlines()]
+  ignored_lines = set(i for i, l in enumerate(lines, 1) if l.endswith('#no-cov!'))
   if untraced_lines == ignored_lines:
     outFL('\n{}: {}: {} lines; {} traceable; {} ignored.',
       target, rel_path, len(lines), traceable_count, len(ignored_lines))
@@ -239,8 +244,7 @@ def report_path(target, path, code_insts, dbg):
 
   ctx_lead = 4
   ctx_tail = 2
-  intervals = seq_int_intervals(untraced_lines ^ ignored_lines)
-
+  intervals = seq_int_intervals(sorted(untraced_lines ^ ignored_lines))
   def next_interval():
     i = next(intervals)
     return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
@@ -248,25 +252,26 @@ def report_path(target, path, code_insts, dbg):
   lead, start, last, tail_last = next_interval()
   uncovered_count = 0
   ignored_but_covered_count = 0
-  line = '\n' # satisfies the missing final newline check if file is empty.
   for i, line in enumerate(lines, 1):
     if i < lead: continue
     assert i <= tail_last
-    if i in untraced_lines:
+    if i < start or i > last:
+      color = ''
+      symbol = ' '
+    elif i in untraced_lines:
+      color = TXT_R
       symbol = '!'
       uncovered_count += 1
-    elif i in ignored_lines:
+    else:
+      color = TXT_Y
       symbol = '?'
       ignored_but_covered_count += 1
-    else:
-      symbol = ' '
-    outF('{:>4d}{} {}', i, symbol, line)
+    outFL('{:>4d}{}{} {}{}', i, color, symbol, line, RST)
     if i == tail_last:
       try: lead, start, last, tail_last = next_interval()
       except StopIteration: break
-  if not line.endswith('\n'): outL() # handle missing final newline.
 
-  outFL('{}: {}: {} lines; {} traceable; {} IGNORED BUT COVERED; {} UNCOVERED.',
+  outFL('{}: {}: {} lines; {} traceable; {} IGNORED but covered; {} UNCOVERED.',
     target, rel_path, len(lines), traceable_count, ignored_but_covered_count, uncovered_count)
 
 
