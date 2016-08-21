@@ -60,13 +60,13 @@ def trace(cmd, arg_targets, output_path, dbg):
   'NOTE: this function must not import or depend on any library that we might wish to trace with cove.'
   cmd_head = abspath(cmd[0])
   targets = set(arg_targets or ['__main__'])
-  # although run_path alters sys.argv[0],
-  # we need to replace all of argv to provide the correct arguments.
+  # although run_path alters and restores sys.argv[0],
+  # we need to replace all of argv to provide the correct arguments to the command getting traced.
   orig_argv = sys.argv.copy()
   sys.argv = cmd.copy()
   exit_code = 0
   trace_set = install_trace(targets, dbg=dbg)
-  #if dbg: print('cove untraceable modules:', sorted(sys.modules.keys()), file=stderr)
+  #if dbg: print('cove untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()), file=stderr)
   try:
     run_path(cmd_head, run_name='__main__')
   except FileNotFoundError as e:
