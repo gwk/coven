@@ -1,0 +1,4 @@
+{
+  'cmd': 'cove test/basic.py 0',
+  'links': 'test',
+}

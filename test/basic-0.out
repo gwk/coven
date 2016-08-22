@@ -1,0 +1,17 @@
+
+cove report:
+
+__main__: test/basic.py:
+[30m   5 [0m  [0m
+[30m   6 [32m| def one_line(): return None #no-cov![0m
+[30m   7 [0m  [0m
+[30m   8 [0m  def multi_line():[0m
+[30m   9 [31m!   return None[0m
+[30m  10 [0m  [0m
+[30m  11 [0m  arg = int(argv[1])[0m
+[30m  12 [0m  [0m
+[30m  13 [0m  if arg:[0m
+[30m  14 [31m!   one_line()[0m
+[30m  15 [31m!   multi_line()[0m
+[30m  16 [0m  [0m
+__main__: test/basic.py: 16 lines; 8 traceable; 0 IGNORED but covered; 3 UNCOVERED.
