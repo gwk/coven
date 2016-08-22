@@ -6,7 +6,7 @@
 import marshal
 import sys
 from collections import defaultdict
-from dis import get_instructions, hasjabs, hasjrel
+from dis import findlinestarts
 from argparse import ArgumentParser
 from inspect import getmodule
 from os.path import abspath
@@ -32,7 +32,7 @@ def main():
   else:
     if not args.cmd:
       arg_parser.error('please specify a command.')
-    trace(cmd=args.cmd, arg_targets=arg_targets, output_path=args.output, dbg=args.dbg)
+    trace_cmd(cmd=args.cmd, arg_targets=arg_targets, output_path=args.output, dbg=args.dbg)
 
 
 def expand_targets(arg_targets):
@@ -56,8 +56,8 @@ def expand_module_path(path):
   return stem.replace('/', '.')
 
 
-def trace(cmd, arg_targets, output_path, dbg):
-  'NOTE: this function must not import or depend on any library that we might wish to trace with cove.'
+def trace_cmd(cmd, arg_targets, output_path, dbg):
+  'NOTE: this must be called before importing any module that we might wish to trace with cove.'
   cmd_head = abspath(cmd[0])
   targets = set(arg_targets or ['__main__'])
   # although run_path alters and restores sys.argv[0],
@@ -85,7 +85,7 @@ def trace(cmd, arg_targets, output_path, dbg):
 
 
 def install_trace(targets, dbg):
-  'NOTE: this function must not import or depend on any library that we might wish to trace with cove.'
+  'NOTE: this must be called before importing any module that we might wish to trace with cove.'
 
   traces = set()
   file_name_filter = {}
@@ -105,22 +105,29 @@ def install_trace(targets, dbg):
     is_target = (module.__name__ in targets)
     return is_target
 
-  def cove_tracer(frame, event, arg):
-    code = frame.f_code
+  def cove_global_tracer(global_frame, global_event, _global_arg_is_none):
+    #print('GTRACE:', global_event, global_frame.f_code.co_name)
+    if global_event != 'call': return None
+    code = global_frame.f_code
     path = code.co_filename
     try:
       is_target = file_name_filter[path]
     except KeyError:
       is_target = is_code_path_targeted(code)
       file_name_filter[path] = is_target
-    if is_target:
-      #print('trace_callback: d:{} e:{} p:{} l:{} i:{}'.format(stack_depth, event, code.co_filename, frame.f_lineno, frame.f_lasti), file=stderr)
-      traces.add((frame.f_code, frame.f_lasti, event))
-      return cove_tracer
-    else:
-      return None # do not trace this scope.
+    if not is_target: return None # do not trace this scope.
 
-  settrace(cove_tracer)
+    # the local tracer lives only as long as execution continues within the code block.
+    # for a generator, this can be less than the lifetime of the frame,
+    # which is saved and restored when resuming from a `yield`.
+    def cove_local_tracer(frame, event, arg):
+      #print('LTRACE:', event, frame.f_lineno, frame.f_code.co_name, file=stderr)
+      traces.add((frame.f_lineno, frame.f_code))
+      return cove_local_tracer # local tracer keeps itself in place during its local scope.
+
+    return cove_local_tracer # global tracer installs a new local tracer for every call.
+
+  settrace(cove_global_tracer)
   return traces
 
 
@@ -146,134 +153,6 @@ def gen_target_paths(targets, cmd_head, dbg):
   return target_paths
 
 
-def report(target_paths, trace_sets, dbg):
-  print('\ncove report:')
-  path_code_insts = gen_path_code_insts(trace_sets)
-  for target, paths in sorted(target_paths.items()):
-    if not paths:
-      print('\n{}: NEVER IMPORTED.'.format(target))
-      continue
-    for path in sorted(paths):
-      code_insts = path_code_insts[path]
-      report_path(target, path, code_insts, dbg)
-
-
-def gen_path_code_insts(trace_sets):
-  path_code_insts = defaultdict(lambda: defaultdict(list)) # path -> code -> inst offsets.
-  for trace_set in trace_sets:
-    for code, inst, event in trace_set:
-      path = code.co_filename
-      path_code_insts[path][code].append((inst, event))
-  return path_code_insts
-
-
-def calculate_module_coverage(path, code_insts, dbg):
-  traceable_lines = set()
-  traced_lines = set()
-  code_inst_lines  = visit_codes(path, set(code_insts.keys()), traceable_lines, dbg=dbg)
-  for code, values in code_insts.items():
-    if dbg: print('\ncode: {}:{}'.format(path, code.co_name), file=stderr)
-    inst_lines = code_inst_lines[code]
-    for inst, event in sorted(values):
-      if dbg: print('  trace inst: {:3}; event: {}'.format(inst, event), file=stderr)
-      if event != 'line': continue
-      line = inst_lines[inst]
-      traced_lines.add(line)
-  return len(traceable_lines), (traceable_lines - traced_lines)
-
-
-jmp_opcodes = set(hasjabs + hasjrel)
-
-def visit_codes(path, codes, traceable_lines, dbg):
-  code_inst_lines = {}
-  while codes:
-    code = codes.pop()
-    if dbg: print('\ncode: {}:{}'.format(path, code.co_name), file=stderr)
-    assert code not in code_inst_lines
-    inst_lines = {}
-    code_inst_lines[code] = inst_lines
-    line = None
-    for inst in get_instructions(code):
-      l = inst.starts_line
-      if l is not None:
-        line = l
-        traceable_lines.add(line)
-      inst_lines[inst.offset] = line # could do this more sparsely, since most inst offsets are never traced.
-      if isinstance(inst.argval, CodeType):
-        sub = inst.argval
-        if sub not in code_inst_lines: # not yet visited.
-          codes.add(sub)
-      if dbg:
-        jmp = ('DST' if inst.is_jump_target else '')
-        if inst.opcode in jmp_opcodes:
-          jmp = ('S,D' if jmp else 'SRC')
-        print('  inst: {:4} line:{:>4} {:3} {:26} {!r}'.format(
-          inst.offset,
-          ('' if l is None else l),
-          jmp,
-          inst.opname,
-          inst.argval), file=stderr)
-  return code_inst_lines
-
-
-def report_path(target, path, code_insts, dbg):
-  from pithy.ansi import TXT_R, TXT_Y, RST
-  from pithy.io import  outF, outFL, outL
-  from pithy.seq import seq_int_intervals
-  from pithy.fs import path_rel_to_current_or_abs
-
-  rel_path = path_rel_to_current_or_abs(path)
-  if not code_insts:
-    outFL('\n{}: {}: NO COVERAGE.', target, rel_path)
-    return
-
-  traceable_count, untraced_lines = calculate_module_coverage(path, code_insts, dbg=dbg)
-  if not untraced_lines:
-    outFL('\n{}: {}: covered.', target, rel_path)
-    return
-
-  lines = [line.rstrip() for line in open(path).readlines()]
-  ignored_lines = set(i for i, l in enumerate(lines, 1) if l.endswith('#no-cov!'))
-  if untraced_lines == ignored_lines:
-    outFL('\n{}: {}: {} lines; {} traceable; {} ignored.',
-      target, rel_path, len(lines), traceable_count, len(ignored_lines))
-    return
-
-  outFL('\n{}: {}:', target, rel_path)
-
-  ctx_lead = 4
-  ctx_tail = 2
-  intervals = seq_int_intervals(sorted(untraced_lines ^ ignored_lines))
-  def next_interval():
-    i = next(intervals)
-    return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
-
-  lead, start, last, tail_last = next_interval()
-  uncovered_count = 0
-  ignored_but_covered_count = 0
-  for i, line in enumerate(lines, 1):
-    if i < lead: continue
-    assert i <= tail_last
-    if i < start or i > last:
-      color = ''
-      symbol = ' '
-    elif i in untraced_lines:
-      color = TXT_R
-      symbol = '!'
-      uncovered_count += 1
-    else:
-      color = TXT_Y
-      symbol = '?'
-      ignored_but_covered_count += 1
-    outFL('{:>4d}{}{} {}{}', i, color, symbol, line, RST)
-    if i == tail_last:
-      try: lead, start, last, tail_last = next_interval()
-      except StopIteration: break
-
-  outFL('{}: {}: {} lines; {} traceable; {} IGNORED but covered; {} UNCOVERED.',
-    target, rel_path, len(lines), traceable_count, ignored_but_covered_count, uncovered_count)
-
-
 def write_coverage(output_path, target_paths, trace_set):
   data = {
     'target_paths': target_paths,
@@ -296,6 +175,166 @@ def coalesce(trace_paths, arg_targets, dbg):
         target_paths[target].update(paths)
       trace_sets.append(data['trace_set'])
   report(target_paths, trace_sets, dbg=dbg)
+
+
+def report(target_paths, trace_sets, dbg):
+  print('\ncove report:')
+  path_traces = gen_path_traces(trace_sets)
+  for target, paths in sorted(target_paths.items()):
+    if not paths:
+      print('\n{}: NEVER IMPORTED.'.format(target))
+      continue
+    for path in sorted(paths):
+      coverage = calculate_coverage(path=path, traces=path_traces[path], dbg=dbg)
+      report_path(target=target, path=path, coverage=coverage, dbg=dbg)
+
+
+def gen_path_traces(trace_sets):
+  'Group the traces by path: path -> trace pair (line, code).'
+  path_traces = defaultdict(list)
+  for trace_set in trace_sets:
+    for trace in trace_set:
+      code = trace[1]
+      path_traces[code.co_filename].append(trace)
+  return path_traces
+
+
+def calculate_coverage(path, traces, dbg):
+  '''
+  Calculate and return the coverage data structure,
+  Which maps line numbers to pairs of (traced, traceable) sets.
+  Each set contains traces, which are pairs of (line, code).
+  A line is fully covered if traced == traceable.
+  '''
+  if dbg:
+    print('\ntrace: {}:'.format(path), file=stderr)
+    traces = sorted_traces(traces)
+  traced_codes = (t[1] for t in traces)
+  all_codes = visit_nodes(start_nodes=traced_codes, visitor=sub_codes)
+  coverage = {} # do not use defaultdict here because reporting logic depends on KeyError.
+  # generate all possible traces.
+  for code in all_codes:
+    for _offset, line in findlinestarts(code):
+      try: tt = coverage[line] # traced_traceable pair.
+      except KeyError:
+        tt = (set(), set())
+        coverage[line] = tt
+      trace = (line, code)
+      tt[1].add(trace)
+      if dbg: err_trace('-', trace)
+  # then fill in the traced sets.
+  for trace in traces:
+    if dbg: err_trace('+', trace)
+    line = trace[0]
+    coverage[line][0].add(trace)
+  return coverage
+
+
+def visit_nodes(start_nodes, visitor):
+  remaining = set(start_nodes)
+  visited = set()
+  while remaining:
+    node = remaining.pop()
+    assert node not in visited
+    visited.add(node)
+    discovered = visitor(node)
+    remaining.update(n for n in discovered if n not in visited)
+  return visited
+
+
+def sub_codes(code):
+  return [c for c in code.co_consts if isinstance(c, CodeType)]
+
+
+def report_path(target, path, coverage, dbg):
+  from pithy.ansi import TXT_D, TXT_G, TXT_L, TXT_M, TXT_R, TXT_Y, RST
+  from pithy.io import errFL, outFL
+  from pithy.seq import seq_int_intervals
+  from pithy.fs import path_rel_to_current_or_abs
+
+  rel_path = path_rel_to_current_or_abs(path)
+
+  no_cov = True
+  uncovered_lines = set() # any line that is not perfectly covered.
+  for line, (traceable, traced) in coverage.items():
+    no_cov &= not traced
+    if traceable != traced:
+      uncovered_lines.add(line)
+
+  if not uncovered_lines:
+    outFL('\n{}: {}: {} lines covered.', target, rel_path, len(coverage))
+    return
+
+  if no_cov:
+    outFL('\n{}: {}: {} LINES NOT COVERED.', target, rel_path, len(uncovered_lines))
+    return
+
+  line_texts = [text.rstrip() for text in open(path).readlines()]
+  ignored_lines = set(line for line, text in enumerate(line_texts, 1) if text.endswith('#no-cov!'))
+  if uncovered_lines == ignored_lines:
+    outFL('\n{}: {}: {} lines; {} traceable; {} ignored.',
+      target, rel_path, len(line_texts), len(coverage), len(ignored_lines))
+    return
+
+  outFL('\n{}: {}:', target, rel_path)
+  ctx_lead = 4
+  ctx_tail = 2
+  intervals = seq_int_intervals(sorted(uncovered_lines ^ ignored_lines))
+  def next_interval():
+    i = next(intervals)
+    return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
+
+  lead, start, last, tail_last = next_interval()
+  uncovered_count = 0
+  ignored_but_covered_count = 0
+  for line, text in enumerate(line_texts, 1):
+    if line < lead: continue
+    assert line <= tail_last
+    sym = ' '
+    color = RST
+    try:
+      traced, traceable = coverage[line]
+      if traced == traceable: # fully covered.
+        if line in ignored_lines:
+          ignored_but_covered_count += 1
+          sym = '?'
+          color = TXT_Y
+      elif traceable.issuperset(traced): # ignored, partially covered or uncovered.
+        if line in ignored_lines:
+          sym = '|'
+          color = TXT_G
+        else:
+          uncovered_count += 1
+          sym = '%' if traced else '!'
+          color = TXT_R
+      else: # confused. traceable is missing something.
+        sym = '\\'
+        color = TXT_M
+        err_traces('{:4}: ERROR: traced:   '.format(line), traced)
+        err_traces('{:4}: ERROR: traceable:'.format(line), traceable)
+    except KeyError:
+      cov = '   '
+      sym = ' '
+    outFL('{dark}{line:4} {color}{sym} {text}{rst}',
+      dark=TXT_D, line=line, color=color, sym=sym, text=text, rst=RST)
+
+    if line == tail_last:
+      try: lead, start, last, tail_last = next_interval()
+      except StopIteration: break
+
+  outFL('{}: {}: {} lines; {} traceable; {} IGNORED but covered; {} UNCOVERED.',
+    target, rel_path, len(line_texts), len(coverage), ignored_but_covered_count, uncovered_count)
+
+
+def sorted_traces(traces):
+  return sorted(traces, key=lambda t: (t[0], t[1].co_name))
+
+def err_trace(label, trace):
+  print('{} {:4}: {}'.format(label, trace[0], trace[1].co_name), file=stderr)
+
+def err_traces(label, traces):
+  for t in sorted_traces(traces):
+    err_trace(label, t)
 
 
 if __name__ == '__main__': main()
