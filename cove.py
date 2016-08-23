@@ -322,7 +322,7 @@ def report_path(target, path, coverage, dbg):
       try: lead, start, last, tail_last = next_interval()
       except StopIteration: break
 
-  outFL('{}: {}: {} lines; {} traceable; {} IGNORED but covered; {} UNCOVERED.',
+  outFL('{}: {}: {} lines; {} traceable; {} IGNORED but covered; {} NOT COVERED.',
     target, rel_path, len(line_texts), len(coverage), ignored_but_covered_count, uncovered_count)
 
 
