@@ -204,7 +204,7 @@ def calculate_coverage(path, traces, dbg):
   Calculate and return the coverage data structure,
   Which maps line numbers to pairs of (traced, traceable) sets.
   Each set contains traces, which are pairs of (line, code).
-  A line is fully covered if traced == traceable.
+  A line is fully covered if (traced == traceable).
   '''
   if dbg:
     print('\ntrace: {}:'.format(path), file=stderr)
