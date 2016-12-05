@@ -1,4 +1,4 @@
 {
-  'cmd': 'cove test/basic.py 2',
+  'cmd': '$PROJ/cove.py test/basic.py 2',
   'links': 'test',
 }
