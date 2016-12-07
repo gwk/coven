@@ -13,4 +13,3 @@ arg = int(argv[1])
 if arg:
   one_line()
   multi_line()
-  

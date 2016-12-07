@@ -13,5 +13,4 @@ __main__: test/basic.py:
 [30m  13 [0m  if arg:[0m
 [30m  14 [31m!   one_line()[0m
 [30m  15 [31m!   multi_line()[0m
-[30m  16 [0m  [0m
-__main__: test/basic.py: 16 lines; 8 traceable; 0 IGNORED but covered; 3 NOT COVERED.
+__main__: test/basic.py: 15 lines; 8 traceable; 0 IGNORED but covered; 3 NOT COVERED.
