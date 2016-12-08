@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 from inspect import getmodule
 from os.path import abspath
 from runpy import run_path
-from sys import stderr, stdout, settrace
+from sys import exc_info, stderr, stdout, settrace
 from types import CodeType
 
 
@@ -73,6 +73,13 @@ def trace_cmd(cmd, arg_targets, output_path, dbg):
     exit('cove error: could not find command to run: {!r}'.format(cmd_head))
   except SystemExit as e:
     exit_code = e.code
+  except BaseException:
+    from traceback import TracebackException
+    exit_code = 1 # exit code that Python returns when an exception raises to toplevel.
+    # format the traceback exactly as it would appear when run without cove.
+    tbe = TracebackException(*exc_info())
+    scrub_traceback(tbe)
+    print(*tbe.format(), sep='', end='', file=stderr)
   finally:
     settrace(None)
   sys.argv = orig_argv
@@ -82,6 +89,16 @@ def trace_cmd(cmd, arg_targets, output_path, dbg):
     exit(exit_code)
   else:
     report(target_paths=target_paths, trace_sets=[trace_set], dbg=dbg)
+
+
+def scrub_traceback(tbe):
+  'Remove frames from TracebackException object that refer to cove, rather than the child process under examination.'
+  stack = tbe.stack # StackSummary is a subclass of list.
+  if not stack or stack[0].filename.find('cove') == -1: return # not the root exception.
+  # TODO: verify that the above find('cove') is sufficiently strict,
+  # while also covering both the installed entry_point and the local dev cases.
+  del stack[0]
+  while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove cove runpy.run_path frames.
 
 
 def install_trace(targets, dbg):
