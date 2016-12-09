@@ -1,0 +1,4 @@
+{
+  'cmd': '$PROJ/cove.py $STEM.py 0',
+  'links': 'test',
+}

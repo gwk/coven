@@ -1,4 +1,0 @@
-
-cove report:
-
-__main__: test/basic.py: 8 lines covered.

@@ -1,4 +1,15 @@
 
 cove report:
 
-__main__: test/basic.py: 8 lines covered.
+__main__: test/basic.py:
+[30m  22 [0m  def called_multi():[0m
+[30m  23 [0m    return None[0m
+[30m  24 [0m  [0m
+[30m  25 [0m  [0m
+[30m  26 [33m? def ignored_but_called_one(): return None #no-cov![0m
+[30m  27 [0m  [0m
+[30m  28 [0m  def ignored_but_called_multi():[0m
+[30m  29 [33m?   return None #no-cov![0m
+[30m  30 [0m  [0m
+[30m  31 [0m  [0m
+__main__: test/basic.py: 38 lines; 18 traceable; 4 ignored; 2 IGNORED but covered; 0 NOT COVERED.

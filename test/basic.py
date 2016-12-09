@@ -3,13 +3,36 @@
 from sys import argv
 
 
-def one_line(): return None #no-cov!
+def main():
+  arg = int(argv[1])
+  if arg:
+    called_one()
+    called_multi()
+    ignored_but_called_one()
+    ignored_but_called_multi()
 
-def multi_line():
+# Padding lines to force hunk split.
+# THIS PADDING LINE SHOULD NOT APPEAR IN OUTPUT HUNK CONTEXT.
+# Padding lines to force hunk split.
+# ^
+# ^
+
+def called_one(): return None
+
+def called_multi():
   return None
 
-arg = int(argv[1])
 
-if arg:
-  one_line()
-  multi_line()
+def ignored_but_called_one(): return None #no-cov!
+
+def ignored_but_called_multi():
+  return None #no-cov!
+
+
+def ignored_never_called_one(): return None #no-cov!
+
+def ignored_never_called_multi():
+  return None #no-cov!
+
+
+if __name__ == '__main__': main()
