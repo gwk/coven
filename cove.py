@@ -264,7 +264,7 @@ def sub_codes(code):
 
 
 def report_path(target, path, coverage, dbg):
-  from pithy.ansi import TXT_D, TXT_G, TXT_L, TXT_M, TXT_R, TXT_Y, RST
+  from pithy.ansi import TXT_C, TXT_D, TXT_L, TXT_M, TXT_R, TXT_Y, RST
   from pithy.io import errFL, outFL
   from pithy.iterable import closed_int_intervals
   from pithy.fs import path_rel_to_current_or_abs
@@ -319,7 +319,7 @@ def report_path(target, path, coverage, dbg):
       elif traceable.issuperset(traced): # ignored, partially covered or uncovered.
         if line in ignored_lines:
           sym = '|'
-          color = TXT_G
+          color = TXT_C
         else:
           uncovered_count += 1
           sym = '%' if traced else '!'
