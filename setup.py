@@ -3,7 +3,7 @@
 from setuptools import setup
 
 
-name = 'cove'
+name = 'cove-tool'
 
 setup(
   name=name,
