@@ -266,7 +266,7 @@ def sub_codes(code):
 def report_path(target, path, coverage, dbg):
   from pithy.ansi import TXT_D, TXT_G, TXT_L, TXT_M, TXT_R, TXT_Y, RST
   from pithy.io import errFL, outFL
-  from pithy.iterable import seq_int_closed_intervals
+  from pithy.iterable import closed_int_intervals
   from pithy.fs import path_rel_to_current_or_abs
 
   rel_path = path_rel_to_current_or_abs(path)
@@ -296,7 +296,7 @@ def report_path(target, path, coverage, dbg):
   outFL('\n{}: {}:', target, rel_path)
   ctx_lead = 4
   ctx_tail = 2
-  intervals = seq_int_closed_intervals(sorted(uncovered_lines ^ ignored_lines))
+  intervals = closed_int_intervals(sorted(uncovered_lines ^ ignored_lines))
   def next_interval():
     i = next(intervals)
     return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
