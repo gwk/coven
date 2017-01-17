@@ -264,6 +264,7 @@ def sub_codes(code):
 
 
 def report_path(target, path, coverage, dbg):
+  # import pithy libraries late, so that they do not get excluded from coverage.
   from pithy.ansi import TXT_C, TXT_D, TXT_L, TXT_M, TXT_R, TXT_Y, RST
   from pithy.io import errFL, outFL
   from pithy.iterable import closed_int_intervals
