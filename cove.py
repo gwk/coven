@@ -185,12 +185,15 @@ def coalesce(trace_paths, arg_targets, dbg):
     target_paths[arg_target]
   trace_sets = []
   for trace_path in trace_paths:
-    with open(trace_path, 'rb') as f:
-      data = marshal.load(f)
-      for target, paths in data['target_paths'].items():
-        if arg_targets and target not in arg_targets: continue
-        target_paths[target].update(paths)
-      trace_sets.append(data['trace_set'])
+    try:
+      with open(trace_path, 'rb') as f:
+        data = marshal.load(f)
+        for target, paths in data['target_paths'].items():
+          if arg_targets and target not in arg_targets: continue
+          target_paths[target].update(paths)
+        trace_sets.append(data['trace_set'])
+    except FileNotFoundError:
+      exit('cove error: trace file not found: {}'.format(trace_path))
   report(target_paths, trace_sets, dbg=dbg)
 
 
