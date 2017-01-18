@@ -310,8 +310,9 @@ def report_path(target, path, coverage, totals, dbg):
 
   outFL('\n{}: {}:', target, rel_path)
   ctx_lead = 4
-  ctx_tail = 2
+  ctx_tail = 1
   intervals = closed_int_intervals(sorted(uncovered_lines ^ ignored_lines))
+
   def next_interval():
     i = next(intervals)
     return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
@@ -345,11 +346,11 @@ def report_path(target, path, coverage, totals, dbg):
       sym = ' '
     outFL('{dark}{line:4} {color}{sym} {text}{rst}',
       dark=TXT_D, line=line, color=color, sym=sym, text=text, rst=RST)
-
     if line == tail_last:
       try: lead, start, last, tail_last = next_interval()
       except StopIteration: break
-
+      else:
+        if line + 1 < lead: outFL('{dark}   …{rst}', dark=TXT_D, rst=RST)
   outFL('{}: {}: {} lines; {} traceable; {} ignored; {} IGNORED but covered; {} NOT COVERED.',
     target, rel_path, len(line_texts), len(coverage), len(ignored_lines), ignored_covered, uncovered_count)
 
