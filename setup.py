@@ -14,7 +14,7 @@ setup(
   url='https://github.com/gwk/' + name,
   description='Cove is a code coverage tracing harness.',
   long_description=open('readme.wu').read(),
-  py_modules=[name],
+  py_modules=['cove'],
   entry_points = {'console_scripts': [
     'cove=cove:main',
   ]},
