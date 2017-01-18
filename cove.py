@@ -197,16 +197,29 @@ def coalesce(trace_paths, arg_targets, dbg):
   report(target_paths, trace_sets, dbg=dbg)
 
 
+class Totals:
+  def __init__(self):
+    self.lines = 0
+    self.traceable = 0
+    self.ignored = 0
+    self.ignored_covered = 0
+    self.uncovered = 0
+
+
 def report(target_paths, trace_sets, dbg):
-  print('\ncove report:')
+  print('cove report:')
   path_traces = gen_path_traces(trace_sets)
+  totals = Totals()
   for target, paths in sorted(target_paths.items()):
     if not paths:
       print('\n{}: NEVER IMPORTED.'.format(target))
       continue
     for path in sorted(paths):
       coverage = calculate_coverage(path=path, traces=path_traces[path], dbg=dbg)
-      report_path(target=target, path=path, coverage=coverage, dbg=dbg)
+      report_path(target=target, path=path, coverage=coverage, totals=totals, dbg=dbg)
+  if len(target_paths) > 1:
+    print('\nTOTAL: {} lines; {} traceable; {} ignored; {} IGNORED but covered; {} UNCOVERED.'.format(
+      totals.lines, totals.traceable, totals.ignored, totals.ignored_covered, totals.uncovered))
 
 
 def gen_path_traces(trace_sets):
@@ -266,7 +279,7 @@ def sub_codes(code):
   return [c for c in code.co_consts if isinstance(c, CodeType)]
 
 
-def report_path(target, path, coverage, dbg):
+def report_path(target, path, coverage, totals, dbg):
   # import pithy libraries late, so that they do not get excluded from coverage.
   from pithy.ansi import TXT_C, TXT_D, TXT_L, TXT_M, TXT_R, TXT_Y, RST
   from pithy.io import errFL, outFL
@@ -275,24 +288,22 @@ def report_path(target, path, coverage, dbg):
 
   rel_path = path_rel_to_current_or_abs(path)
 
-  no_cov = True
-  uncovered_lines = set() # any line that is not perfectly covered.
+  uncovered_lines = set() # lines that not are perfectly covered.
   for line, (traceable, traced) in coverage.items():
-    no_cov &= not traced
     if traceable != traced:
       uncovered_lines.add(line)
 
-  if not uncovered_lines:
-    outFL('\n{}: {}: {} lines covered.', target, rel_path, len(coverage))
-    return
-
-  if no_cov:
-    outFL('\n{}: {}: {} LINES NOT COVERED.', target, rel_path, len(uncovered_lines))
-    return
-
   line_texts = [text.rstrip() for text in open(path).readlines()]
   ignored_lines = set(line for line, text in enumerate(line_texts, 1) if text.endswith('#no-cov!'))
-  if uncovered_lines == ignored_lines:
+  ignored_covered = len(ignored_lines - uncovered_lines)
+  uncovered_count = len(uncovered_lines - ignored_lines)
+
+  totals.lines += len(line_texts)
+  totals.traceable += len(coverage)
+  totals.ignored += len(ignored_lines)
+  totals.ignored_covered += ignored_covered
+  totals.uncovered += uncovered_count
+  if ignored_covered == 0 and uncovered_count == 0:
     outFL('\n{}: {}: {} lines; {} traceable; {} ignored.',
       target, rel_path, len(line_texts), len(coverage), len(ignored_lines))
     return
@@ -306,8 +317,6 @@ def report_path(target, path, coverage, dbg):
     return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
 
   lead, start, last, tail_last = next_interval()
-  uncovered_count = 0
-  ignored_but_covered_count = 0
   for line, text in enumerate(line_texts, 1):
     if line < lead: continue
     assert line <= tail_last
@@ -317,7 +326,6 @@ def report_path(target, path, coverage, dbg):
       traced, traceable = coverage[line]
       if traced == traceable: # fully covered.
         if line in ignored_lines:
-          ignored_but_covered_count += 1
           sym = '?'
           color = TXT_Y
       elif traceable.issuperset(traced): # ignored, partially covered or uncovered.
@@ -325,7 +333,6 @@ def report_path(target, path, coverage, dbg):
           sym = '|'
           color = TXT_C
         else:
-          uncovered_count += 1
           sym = '%' if traced else '!'
           color = TXT_R
       else: # confused. traceable is missing something.
@@ -344,7 +351,7 @@ def report_path(target, path, coverage, dbg):
       except StopIteration: break
 
   outFL('{}: {}: {} lines; {} traceable; {} ignored; {} IGNORED but covered; {} NOT COVERED.',
-    target, rel_path, len(line_texts), len(coverage), len(ignored_lines), ignored_but_covered_count, uncovered_count)
+    target, rel_path, len(line_texts), len(coverage), len(ignored_lines), ignored_covered, uncovered_count)
 
 
 def sorted_traces(traces):
