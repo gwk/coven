@@ -294,7 +294,7 @@ def report_path(target, path, coverage, totals, dbg):
       uncovered_lines.add(line)
 
   line_texts = [text.rstrip() for text in open(path).readlines()]
-  ignored_lines = set(line for line, text in enumerate(line_texts, 1) if text.endswith('#no-cov!'))
+  ignored_lines = calc_ignored_lines(line_texts)
   ignored_covered = len(ignored_lines - uncovered_lines)
   uncovered_count = len(uncovered_lines - ignored_lines)
 
@@ -353,6 +353,24 @@ def report_path(target, path, coverage, totals, dbg):
         if line + 1 < lead: outFL('{dark}   …{rst}', dark=TXT_D, rst=RST)
   outFL('{}: {}: {} lines; {} traceable; {} ignored; {} IGNORED but covered; {} NOT COVERED.',
     target, rel_path, len(line_texts), len(coverage), len(ignored_lines), ignored_covered, uncovered_count)
+
+
+def calc_ignored_lines(line_texts):
+  from re import compile
+  indent_re = compile(r' *')
+  ignored = set()
+  ignored_indent = 0
+  for line, text in enumerate(line_texts, 1):
+    m = indent_re.match(text)
+    indent = m.end() - m.start()
+    if text.endswith('#no-cov!'):
+      ignored.add(line)
+      ignored_indent = indent
+    elif 0 < ignored_indent < indent:
+      ignored.add(line)
+    else:
+      ignored_indent = 0
+  return ignored
 
 
 def sorted_traces(traces):
