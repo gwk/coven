@@ -15,7 +15,7 @@ def main():
   if arg: inlined() # tests inlined bodies.
 
   i = 1 if arg else 0
-  while i: inlined(); i = 0
+  while i: inlined(); i -= 1
 
   for i in range(arg): inlined()
 

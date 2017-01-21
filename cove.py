@@ -6,7 +6,7 @@
 import marshal
 import sys
 from collections import defaultdict
-from dis import findlinestarts
+from dis import findlinestarts, get_instructions, hasjabs, hasjrel, opname, opmap
 from argparse import ArgumentParser
 from inspect import getmodule
 from os.path import abspath
@@ -138,8 +138,10 @@ def install_trace(targets, dbg):
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
     def cove_local_tracer(frame, event, arg):
-      #print('LTRACE:', event, frame.f_lineno, frame.f_code.co_name, file=stderr)
-      traces.add((frame.f_lineno, frame.f_code))
+      #print('LTRACE:', event, frame.f_lineno, frame.f_lasti, frame.f_code.co_name, file=stderr)
+      #traces.add((frame.f_lineno, frame.f_code)) # trace lines only.
+      traces.add((frame.f_lineno, frame.f_lasti, frame.f_code)) # trace lines and offsets.
+
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
 
     return cove_local_tracer # global tracer installs a new local tracer for every call.
@@ -223,11 +225,11 @@ def report(target_paths, trace_sets, dbg):
 
 
 def gen_path_traces(trace_sets):
-  'Group the traces by path: path -> trace pair (line, code).'
+  'Group the traces by path.'
   path_traces = defaultdict(list)
   for trace_set in trace_sets:
     for trace in trace_set:
-      code = trace[1]
+      code = trace[-1]
       path_traces[code.co_filename].append(trace)
   return path_traces
 
@@ -236,25 +238,20 @@ def calculate_coverage(path, traces, dbg):
   '''
   Calculate and return the coverage data structure,
   Which maps line numbers to pairs of (traced, traceable) sets.
-  Each set contains traces, which are pairs of (line, code).
+  Each set contains trace tuples.
   A line is fully covered if (traced == traceable).
+  NOTE: if analysis proves to be imperfect, we could use issuperset instead of equality.
   '''
   if dbg:
     print('\ntrace: {}:'.format(path), file=stderr)
     traces = sorted_traces(traces)
-  traced_codes = (t[1] for t in traces)
-  all_codes = visit_nodes(start_nodes=traced_codes, visitor=sub_codes)
-  coverage = {} # do not use defaultdict here because reporting logic depends on KeyError.
+  traced_codes = (t[-1] for t in traces)
+  all_codes = list(visit_nodes(start_nodes=traced_codes, visitor=sub_codes))
+  if dbg: all_codes.sort(key=lambda code: code.co_name)
+  coverage = {} # (traced, traceable). Do not use defaultdict because reporting logic depends on KeyError.
   # generate all possible traces.
   for code in all_codes:
-    for _offset, line in findlinestarts(code):
-      try: tt = coverage[line] # traced_traceable pair.
-      except KeyError:
-        tt = (set(), set())
-        coverage[line] = tt
-      trace = (line, code)
-      tt[1].add(trace)
-      if dbg: err_trace('-', trace)
+    crawl_code_insts(path=path, code=code, coverage=coverage, dbg=dbg)
   # then fill in the traced sets.
   for trace in traces:
     if dbg: err_trace('+', trace)
@@ -278,6 +275,107 @@ def visit_nodes(start_nodes, visitor):
 def sub_codes(code):
   return [c for c in code.co_consts if isinstance(c, CodeType)]
 
+
+def crawl_code_lines(path, code, coverage, dbg):
+  for _offset, line in findlinestarts(code):
+    try: tt = coverage[line]
+    except KeyError:
+      tt = (set(), set())
+      coverage[line] = tt
+    trace = (line, code)
+    tt[1].add(trace)
+    if dbg: err_trace('-', trace)
+
+
+def crawl_code_insts(path, code, coverage, dbg):
+  if dbg: print('\ncrawl code: {}:{}'.format(path, code.co_name), file=stderr)
+  start_offs = set() # offsets that start a line.
+  break_offs = set() # offsets whose opcodes always break.
+  off_lines = {} # map all instruction offsets to line numbers; some are not provided by dis.
+  off_dsts = {} # map instruction offsets to their destinations, as (next, jump) pairs.
+  line = None # updated for every starts_line.
+  for inst in get_instructions(code):
+    off = inst.offset
+    if off == 0: assert not inst.is_jump_target # this would make boolean tests on dsts unsafe.
+    if inst.starts_line:
+      start_offs.add(off)
+      line = inst.starts_line # otherwise inherit previous line.
+    assert line # should never be None or 0.
+    off_lines[off] = line
+    op = inst.opcode
+    if op in breaking_opcodes:
+      break_offs.add(off)
+    dst_next = None
+    dst_jump = None
+    if op not in unconditional_jump_opcodes: # normal interpreter step forward.
+      dst_next = off + 2 # changed in python3.6; previously was (1 if op < HAVE_ARGUMENT else 3).
+    if op in jump_opcodes: # argval accounts for absolute vs relative offsets.
+      dst_jump = inst.argval
+    off_dsts[off] = (dst_next, dst_jump)
+    if dbg:
+      err_inst(inst, dst_next, dst_jump)
+  if dbg:
+    for src, dsts in sorted(off_dsts.items()):
+      n, j = dsts
+      #print(f"  inst edge: {src:3} -> {n or 'ø':>3} {j or 'ø':>3}", file=stderr)
+
+  def resolve_breaking_dsts(line, src, dst):
+    '''
+    Given an offset `src`, find all possible offsets that will break.
+    This requires recursively exploring the possible destinations of `src`.
+    Attempts to match the logic of CPython's ceval.c:maybe_call_line_trace.
+    A destination breaks if it is an opcode that always breaks (e.g. RETURN_VALUE),
+    if it is on a different line than the previous instruction,
+    or if it is a jump backwards.
+    '''
+    if dst is None: return frozenset()
+    #print(f'  RESOLVE {line:4}: {src:3} -> {dst:3}', file=stderr)
+    if dst is break_offs or dst in break_offs or dst in start_offs or (dst < src):
+      return frozenset({dst})
+    assert line == off_lines[dst]
+    nxt, jmp = off_dsts[dst]
+    return resolve_breaking_dsts(line, dst, nxt) | resolve_breaking_dsts(line, dst, jmp)
+
+  edges = []
+  def visit_src(src):
+    line = off_lines[src]
+    nxt, jmp = off_dsts[src]
+    traceable_dsts = resolve_breaking_dsts(line, src, nxt) | resolve_breaking_dsts(line, src, jmp)
+    for dst in traceable_dsts:
+      edges.append((src, dst))
+    return traceable_dsts
+  offsets = visit_nodes(start_nodes=[0], visitor=visit_src)
+
+  if False and dbg:
+    for src, dst in edges:
+      print(f'  edge: {src:3} -> {dst:3}', file=stderr)
+
+  for off in offsets:
+    line = off_lines[off]
+    try: tt = coverage[line]
+    except KeyError:
+      tt = (set(), set())
+      coverage[line] = tt
+    trace = (line, off, code)
+    tt[1].add(trace)
+    if dbg: err_trace('-', trace)
+
+
+
+def err_inst(inst, dst_next, dst_jump):
+  # as of Python 3.5.2, dis._get_instructions_bytes forgets to handle the hasjabs case.
+  arg_msg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
+  print('  line:{:>4}  off:{:3}  next:{:3}  jump:{:3}  {:3}  {:26} {}'.format(
+    (inst.starts_line or ''),
+    inst.offset,
+    dst_next or '',
+    dst_jump or '',
+    ('DST' if inst.is_jump_target else '   '),
+    inst.opname,
+    arg_msg), file=stderr)
+
+
+#
 
 def report_path(target, path, coverage, totals, dbg):
   # import pithy libraries late, so that they do not get excluded from coverage.
@@ -339,8 +437,8 @@ def report_path(target, path, coverage, totals, dbg):
       else: # confused. traceable is missing something.
         sym = '\\'
         color = TXT_M
-        err_traces('{:4}: ERROR: traced:   '.format(line), traced)
-        err_traces('{:4}: ERROR: traceable:'.format(line), traceable)
+        err_traces('{:4}: ERROR: -'.format(line), traceable)
+        err_traces('{:4}: ERROR: +'.format(line), traced)
     except KeyError:
       cov = '   '
       sym = ' '
@@ -374,14 +472,67 @@ def calc_ignored_lines(line_texts):
 
 
 def sorted_traces(traces):
-  return sorted(traces, key=lambda t: (t[0], t[1].co_name))
+  return sorted(traces, key=lambda t: (t[:-1], t[-1].co_name))
 
 def err_trace(label, trace):
-  print('{} {:4}: {}'.format(label, trace[0], trace[1].co_name), file=stderr)
+  if len(trace) == 2:
+    print('{} l:{:4};    {}'.format(label, trace[0], trace[-1].co_name), file=stderr)
+  else:
+    print('{} l:{:4}; {:4};    {}'.format(label, trace[0], trace[1], trace[-1].co_name), file=stderr)
 
 def err_traces(label, traces):
   for t in sorted_traces(traces):
     err_trace(label, t)
 
+
+# Opcode information.
+
+# absolute jump codes.
+#print('JMP ABS:', *sorted(opname[op] for op in hasjabs))
+CONTINUE_LOOP         = opmap['CONTINUE_LOOP']
+JUMP_ABSOLUTE         = opmap['JUMP_ABSOLUTE']
+JUMP_IF_FALSE_OR_POP  = opmap['JUMP_IF_FALSE_OR_POP']
+JUMP_IF_TRUE_OR_POP   = opmap['JUMP_IF_TRUE_OR_POP']
+POP_JUMP_IF_FALSE     = opmap['POP_JUMP_IF_FALSE']
+POP_JUMP_IF_TRUE      = opmap['POP_JUMP_IF_TRUE']
+
+# relative jump codes.
+#print('JMP REL:', *sorted(opname[op] for op in hasjrel))
+FOR_ITER              = opmap['FOR_ITER']
+JUMP_FORWARD          = opmap['JUMP_FORWARD']
+SETUP_ASYNC_WITH      = opmap['SETUP_ASYNC_WITH']
+SETUP_EXCEPT          = opmap['SETUP_EXCEPT']
+SETUP_FINALLY         = opmap['SETUP_FINALLY']
+SETUP_LOOP            = opmap['SETUP_LOOP']
+SETUP_WITH            = opmap['SETUP_WITH']
+
+# other opcodes that affect control flow.
+RETURN_VALUE          = opmap['RETURN_VALUE']
+YIELD_FROM            = opmap['YIELD_FROM']
+YIELD_VALUE           = opmap['YIELD_VALUE']
+
+# `hasjrel` includes the SETUP_* ops, which do not actually branch.
+# Instead, they specify an expected destination which is verified later?
+jump_opcodes = set(hasjabs) | {
+  FOR_ITER,
+  JUMP_FORWARD
+}
+
+# the following opcodes never advance to the next instruction.
+unconditional_jump_opcodes = {
+  CONTINUE_LOOP,
+  JUMP_ABSOLUTE,
+  JUMP_FORWARD,
+  RETURN_VALUE,
+  #YIELD_FROM, # ??
+  #YIELD_VALUE, # ??
+}
+
+# the falling opcodes appear always to trigger tracing.
+breaking_opcodes = {
+  RETURN_VALUE,
+  YIELD_FROM,
+  YIELD_VALUE,
+}
 
 if __name__ == '__main__': main()
