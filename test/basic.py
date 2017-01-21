@@ -4,16 +4,23 @@ from sys import argv
 
 
 def main():
+
   arg = int(argv[1])
   if arg:
     called_one()
     called_multi()
     ignored_but_called_one()
     ignored_but_called_multi()
-    # Padding lines to force hunk split.
-    # THIS PADDING LINE SHOULD NOT APPEAR IN OUTPUT HUNK CONTEXT.
-    # Padding lines to force hunk split.
-    # ditto.
+
+  if arg: inlined() # tests inlined bodies.
+
+  i = 1 if arg else 0
+  while i: inlined(); i = 0
+
+  for i in range(arg): inlined()
+
+
+def inlined(): pass
 
 
 def called_one(): return None

@@ -1,13 +1,13 @@
 cove report:
 
 __main__: test/basic.py:
-[30m  26 [0m  # because the python3.6.0 compiler is smart enough to elide the `if` when passed a constant.[0m
-[30m  27 [0m  x = 0[0m
-[30m  28 [0m  [0m
-[30m  29 [0m  [0m
-[30m  30 [33m? def ignored_but_called_one(): return None #no-cov![0m
-[30m  31 [0m  [0m
-[30m  32 [0m  def ignored_but_called_multi():[0m
-[30m  33 [33m?   if x: #no-cov![0m
-[30m  34 [36m|     return None[0m
-__main__: test/basic.py: 45 lines; 23 traceable; 7 ignored; 2 IGNORED but covered; 0 NOT COVERED.
+[30m  33 [0m  # because the python3.6.0 compiler is smart enough to elide the `if` when passed a constant.[0m
+[30m  34 [0m  x = 0[0m
+[30m  35 [0m  [0m
+[30m  36 [0m  [0m
+[30m  37 [33m? def ignored_but_called_one(): return None #no-cov![0m
+[30m  38 [0m  [0m
+[30m  39 [0m  def ignored_but_called_multi():[0m
+[30m  40 [33m?   if x: #no-cov![0m
+[30m  41 [36m|     return None[0m
+__main__: test/basic.py: 52 lines; 28 traceable; 7 ignored; 2 IGNORED but covered; 0 NOT COVERED.
