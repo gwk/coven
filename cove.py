@@ -123,7 +123,7 @@ def install_trace(targets, dbg):
     return is_target
 
   def cove_global_tracer(global_frame, global_event, _global_arg_is_none):
-    #print('GTRACE:', global_event, global_frame.f_code.co_name)
+    #print('GTRACE:', global_event, global_frame.f_lineno, global_frame.f_code.co_name)
     if global_event != 'call': return None
     code = global_frame.f_code
     path = code.co_filename
