@@ -333,7 +333,7 @@ def crawl_code_insts(path, code, coverage, dbg):
     '''
     if dst is None: return frozenset()
     #print(f'  RESOLVE {line:4}: {src:3} -> {dst:3}', file=stderr)
-    if dst is break_offs or dst in break_offs or dst in start_offs or (dst < src):
+    if dst in break_offs or dst in start_offs or (dst < src):
       return frozenset({dst})
     assert line == off_lines[dst]
     nxt, jmp = off_dsts[dst]
