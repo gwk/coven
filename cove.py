@@ -137,11 +137,13 @@ def install_trace(targets, dbg):
     # the local tracer lives only as long as execution continues within the code block.
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
+    prev_off = -1
     def cove_local_tracer(frame, event, arg):
+      nonlocal prev_off
       #print('LTRACE:', event, frame.f_lineno, frame.f_lasti, frame.f_code.co_name, file=stderr)
       #traces.add((frame.f_lineno, frame.f_code)) # trace lines only.
-      traces.add((frame.f_lineno, frame.f_lasti, frame.f_code)) # trace lines and offsets.
-
+      traces.add((frame.f_lineno, prev_off, frame.f_lasti, frame.f_code)) # trace lines and offsets.
+      prev_off = frame.f_lasti
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
 
     return cove_local_tracer # global tracer installs a new local tracer for every call.
@@ -237,8 +239,9 @@ def gen_path_traces(trace_sets):
 def calculate_coverage(path, traces, dbg):
   '''
   Calculate and return the coverage data structure,
-  Which maps line numbers to pairs of (traced, traceable) sets.
-  Each set contains trace tuples.
+  Which maps line numbers to (traced:Set[Loc], traceable:Set[Loc]) pairs.
+  Each set contains Loc tuples.
+  A Loc is (line, offset, code).
   A line is fully covered if (traced == traceable).
   NOTE: if analysis proves to be imperfect, we could use issuperset instead of equality.
   '''
@@ -255,8 +258,8 @@ def calculate_coverage(path, traces, dbg):
   # then fill in the traced sets.
   for trace in traces:
     if dbg: err_trace('+', trace)
-    line = trace[0]
-    coverage[line][0].add(trace)
+    line, src, dst, code = trace
+    coverage[line][0].add((line, dst, code))
   return coverage
 
 
@@ -356,9 +359,9 @@ def crawl_code_insts(path, code, coverage, dbg):
     except KeyError:
       tt = (set(), set())
       coverage[line] = tt
-    trace = (line, off, code)
-    tt[1].add(trace)
-    if dbg: err_trace('-', trace)
+    loc = (line, off, code)
+    tt[1].add(loc)
+    if dbg: err_trace('-', loc)
 
 
 
@@ -475,10 +478,8 @@ def sorted_traces(traces):
   return sorted(traces, key=lambda t: (t[:-1], t[-1].co_name))
 
 def err_trace(label, trace):
-  if len(trace) == 2:
-    print('{} l:{:4};    {}'.format(label, trace[0], trace[-1].co_name), file=stderr)
-  else:
-    print('{} l:{:4}; {:4};    {}'.format(label, trace[0], trace[1], trace[-1].co_name), file=stderr)
+  print(label, 'l:', *(f'{el:4}' for el in trace[:-1]), end=';   ', file=stderr)
+  print(trace[-1].co_name, file=stderr)
 
 def err_traces(label, traces):
   for t in sorted_traces(traces):
