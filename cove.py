@@ -141,7 +141,6 @@ def install_trace(targets, dbg):
     def cove_local_tracer(frame, event, arg):
       nonlocal prev_off
       #print('LTRACE:', event, frame.f_lineno, frame.f_lasti, frame.f_code.co_name, file=stderr)
-      #traces.add((frame.f_lineno, frame.f_code)) # trace lines only.
       traces.add((frame.f_lineno, prev_off, frame.f_lasti, frame.f_code)) # trace lines and offsets.
       prev_off = frame.f_lasti
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
@@ -277,17 +276,6 @@ def visit_nodes(start_nodes, visitor):
 
 def sub_codes(code):
   return [c for c in code.co_consts if isinstance(c, CodeType)]
-
-
-def crawl_code_lines(path, code, coverage, dbg):
-  for _offset, line in findlinestarts(code):
-    try: tt = coverage[line]
-    except KeyError:
-      tt = (set(), set())
-      coverage[line] = tt
-    trace = (line, code)
-    tt[1].add(trace)
-    if dbg: err_trace('-', trace)
 
 
 def crawl_code_insts(path, code, coverage, dbg):
