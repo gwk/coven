@@ -494,8 +494,7 @@ def sorted_traces(traces):
 
 
 def err_trace(label, trace):
-  errSL(label, 'l:', *(f'{el:4}' for el in trace[:-1]), end=';   ')
-  errSL(trace[-1].co_name)
+  errSL(label, 'l:', *(f'{el:4}' for el in trace[:-1]), ';  ', trace[-1].co_name)
 
 
 def err_traces(label, traces):
