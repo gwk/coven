@@ -359,7 +359,6 @@ def err_inst(inst):
 
 def report_path(target, path, coverage, totals, dbg):
   # import pithy libraries late, so that they do not get excluded from coverage.
-  from pithy.ansi import TXT_C, TXT_D, TXT_L, TXT_M, TXT_R, TXT_Y, RST
   from pithy.iterable import closed_int_intervals
   from pithy.fs import path_rel_to_current_or_abs
 
@@ -535,5 +534,13 @@ breaking_opcodes = {
   YIELD_FROM,
   YIELD_VALUE,
 }
+
+RST = '\x1b[0m'
+TXT_C = '\x1b[36m'
+TXT_D = '\x1b[30m'
+TXT_L = '\x1b[37m'
+TXT_M = '\x1b[35m'
+TXT_R = '\x1b[31m'
+TXT_Y = '\x1b[33m'
 
 if __name__ == '__main__': main()
