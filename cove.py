@@ -5,11 +5,12 @@
 # Therefore, we import only stdlib modules that we need.
 import marshal
 import sys
+import os
 from collections import defaultdict
 from dis import findlinestarts, get_instructions, hasjabs, hasjrel, opname, opmap
 from argparse import ArgumentParser
 from inspect import getmodule
-from os.path import abspath
+from os.path import abspath as abs_path, join as path_join, normpath as normalize_path
 from runpy import run_path
 from sys import exc_info, stderr, stdout, settrace
 from types import CodeType
@@ -60,7 +61,7 @@ def expand_module_path(path):
 
 def trace_cmd(cmd, arg_targets, output_path, dbg):
   'NOTE: this must be called before importing any module that we might wish to trace with cove.'
-  cmd_head = abspath(cmd[0])
+  cmd_head = abs_path(cmd[0])
   targets = set(arg_targets or ['__main__'])
   # although run_path alters and restores sys.argv[0],
   # we need to replace all of argv to provide the correct arguments to the command getting traced.
@@ -358,10 +359,6 @@ def err_inst(inst):
 
 
 def report_path(target, path, coverage, totals, dbg):
-  # import pithy libraries late, so that they do not get excluded from coverage.
-  from pithy.iterable import closed_int_intervals
-  from pithy.fs import path_rel_to_current_or_abs
-
   rel_path = path_rel_to_current_or_abs(path)
 
   uncovered_lines = set() # lines that not are perfectly covered.
@@ -430,6 +427,26 @@ def report_path(target, path, coverage, totals, dbg):
     target, rel_path, len(line_texts), len(coverage), len(ignored_lines), ignored_covered, uncovered_count))
 
 
+def path_rel_to_current_or_abs(path: str) -> str:
+  ap = abs_path(path)
+  ac = abs_path('.')
+  comps = path_comps(ap)
+  prefix = path_comps(ac)
+  if comps == prefix:
+    return '.'
+  if prefix == comps[:len(prefix)]:
+    return path_join(*comps[len(prefix):])
+  errSL(comps)
+  errSL(prefix)
+  return ap
+
+def path_comps(path: str):
+  np = normalize_path(path)
+  if np == '/': return ['/']
+  assert not np.endswith('/')
+  return [comp or '/' for comp in np.split(os.sep)]
+
+
 def calc_ignored_lines(line_texts):
   from re import compile
   indent_re = compile(r' *')
@@ -446,6 +463,30 @@ def calc_ignored_lines(line_texts):
     else:
       ignored_indent = 0
   return ignored
+
+
+def closed_int_intervals(iterable):
+  '''
+  Note: lifted from pithy.iterable. Please send changes upstream.
+  Given `iterable` of integers, yield a sequence of closed intervals.
+  '''
+  it = iter(iterable)
+  try: first = next(it)
+  except StopIteration: return
+  if not isinstance(first, int):
+    raise TypeError('closed_int_intervals requires a sequence of int elements; received first element: {!r}', first)
+  interval = (first, first)
+  for i in it:
+    l, h = interval
+    if i < h:
+      raise ValueError('closed_int_intervals requires monotonically increasing elements')
+    if i == h: continue
+    if i == h + 1:
+      interval = (l, i)
+    else:
+      yield interval
+      interval = (i, i)
+  yield interval
 
 
 def sorted_traces(traces):
