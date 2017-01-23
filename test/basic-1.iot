@@ -1,4 +1,3 @@
 {
   'cmd': '$PROJ/cove.py test/basic.py 1',
-  'links': 'test',
 }

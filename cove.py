@@ -137,11 +137,13 @@ def install_trace(targets, dbg):
     # the local tracer lives only as long as execution continues within the code block.
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
+    prev_line = -1
     prev_off = -1
     def cove_local_tracer(frame, event, arg):
-      nonlocal prev_off
-      #print('LTRACE:', event, frame.f_lineno, frame.f_lasti, frame.f_code.co_name, file=stderr)
-      traces.add((frame.f_lineno, prev_off, frame.f_lasti, frame.f_code)) # trace lines and offsets.
+      nonlocal prev_line, prev_off
+      #print('LTRACE:', event, prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code.co_name, file=stderr)
+      traces.add((prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code)) # trace lines and offsets.
+      prev_line = frame.f_lineno
       prev_off = frame.f_lasti
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
 
@@ -257,8 +259,8 @@ def calculate_coverage(path, traces, dbg):
   # then fill in the traced sets.
   for trace in traces:
     if dbg: err_trace('+', trace)
-    line, src, dst, code = trace
-    coverage[line][0].add((line, dst, code))
+    src_line, src_off, dst_line, dst_off, code = trace
+    coverage[dst_line][0].add((dst_line, dst_off, code))
   return coverage
 
 
@@ -280,93 +282,78 @@ def sub_codes(code):
 
 def crawl_code_insts(path, code, coverage, dbg):
   if dbg: print('\ncrawl code: {}:{}'.format(path, code.co_name), file=stderr)
-  start_offs = set() # offsets that start a line.
-  break_offs = set() # offsets whose opcodes always break.
-  off_lines = {} # map all instruction offsets to line numbers; some are not provided by dis.
-  off_dsts = {} # map instruction offsets to their destinations, as (next, jump) pairs.
-  line = None # updated for every starts_line.
-  for inst in get_instructions(code):
-    off = inst.offset
-    if off == 0: assert not inst.is_jump_target # this would make boolean tests on dsts unsafe.
-    if inst.starts_line:
-      start_offs.add(off)
-      line = inst.starts_line # otherwise inherit previous line.
-    assert line # should never be None or 0.
-    off_lines[off] = line
-    op = inst.opcode
-    if op in breaking_opcodes:
-      break_offs.add(off)
-    dst_next = None
-    dst_jump = None
-    if op not in unconditional_jump_opcodes: # normal interpreter step forward.
-      dst_next = off + 2 # changed in python3.6; previously was (1 if op < HAVE_ARGUMENT else 3).
-    if op in jump_opcodes: # argval accounts for absolute vs relative offsets.
-      dst_jump = inst.argval
-    off_dsts[off] = (dst_next, dst_jump)
-    if dbg:
-      err_inst(inst, dst_next, dst_jump)
+
+  insts = list(get_instructions(code))
   if dbg:
-    for src, dsts in sorted(off_dsts.items()):
-      n, j = dsts
-      #print(f"  inst edge: {src:3} -> {n or 'ø':>3} {j or 'ø':>3}", file=stderr)
+    for inst in insts: err_inst(inst)
 
-  def resolve_breaking_dsts(line, src, dst):
-    '''
-    Given an offset `src`, find all possible offsets that will break.
-    This requires recursively exploring the possible destinations of `src`.
-    Attempts to match the logic of CPython's ceval.c:maybe_call_line_trace.
-    A destination breaks if it is an opcode that always breaks (e.g. RETURN_VALUE),
-    if it is on a different line than the previous instruction,
-    or if it is a jump backwards.
-    '''
-    if dst is None: return frozenset()
-    #print(f'  RESOLVE {line:4}: {src:3} -> {dst:3}', file=stderr)
-    if dst in break_offs or dst in start_offs or (dst < src):
-      return frozenset({dst})
-    assert line == off_lines[dst]
-    nxt, jmp = off_dsts[dst]
-    return resolve_breaking_dsts(line, dst, nxt) | resolve_breaking_dsts(line, dst, jmp)
+  visited = set()
+  def find_traceable_edges(prev_line, prev_off, off, blocks):
+    args = (prev_line, prev_off, off, blocks)
+    #print('FIND', args, file=stderr)
+    if args in visited: return
+    visited.add(args)
+    index = off // 2 # this is incorrect prior to python3.6.
+    inst = insts[index]
+    op = inst.opcode
+    starts_line = inst.starts_line
+    line = starts_line or prev_line # note: this is the line trick described in lnotabs_notes.txt.
+    assert inst.offset == off
+    assert off or not inst.is_jump_target # this would make boolean tests on jump dsts unsafe.
+    if starts_line or (off < prev_off) or (op in breaking_opcodes):
+      # add loc.
+      try: tt = coverage[line]
+      except KeyError:
+        tt = (set(), set())
+        coverage[line] = tt
+      loc = (line, off, code)
+      #print('LOC', loc, file=stderr)
+      #assert loc not in tt[1]
+      tt[1].add(loc)
+      if dbg: err_trace('-', (prev_line, prev_off, line, off, code))
+    # block management.
+    # this is a guess, probably wrong.
+    if op in push_block_opcodes:
+      block_dst = None
+      blocks = blocks + (inst.argval,)
+    elif op in pop_block_opcodes:
+      block_dst = blocks[-1]
+      blocks = blocks[:-1]
+    # note: we currently use recursion to explore the control flow graph.
+    # this could hit the recursion limit for large code objects, and is probably slow.
+    # alternatively we could:
+    # * turn the second call into a fake tail call using a while loop around this whole function body;
+    # * use visit_nodes, which would break ordering of dbg output.
+    if op == BREAK_LOOP:
+      find_traceable_edges(line, off, block_dst, blocks)
+      return
+    if op in jump_opcodes:
+      jmp = inst.argval # argval accounts for absolute vs relative offsets.
+      find_traceable_edges(line, off, jmp, blocks)
+    if op not in stop_opcodes: # normal interpreter step forward.
+      nxt = off + 2
+      #^ as of python3.6, all opcodes take 2 bytes.
+      # previously the next instruction was off + (1 if op < HAVE_ARGUMENT else 3).
+      find_traceable_edges(line, off, nxt, blocks)
 
-  edges = []
-  def visit_src(src):
-    line = off_lines[src]
-    nxt, jmp = off_dsts[src]
-    traceable_dsts = resolve_breaking_dsts(line, src, nxt) | resolve_breaking_dsts(line, src, jmp)
-    for dst in traceable_dsts:
-      edges.append((src, dst))
-    return traceable_dsts
-  offsets = visit_nodes(start_nodes=[0], visitor=visit_src)
-
-  if False and dbg:
-    for src, dst in edges:
-      print(f'  edge: {src:3} -> {dst:3}', file=stderr)
-
-  for off in offsets:
-    line = off_lines[off]
-    try: tt = coverage[line]
-    except KeyError:
-      tt = (set(), set())
-      coverage[line] = tt
-    loc = (line, off, code)
-    tt[1].add(loc)
-    if dbg: err_trace('-', loc)
-
-
-
-def err_inst(inst, dst_next, dst_jump):
-  # as of Python 3.5.2, dis._get_instructions_bytes forgets to handle the hasjabs case.
-  arg_msg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
-  print('  line:{:>4}  off:{:3}  next:{:3}  jump:{:3}  {:3}  {:26} {}'.format(
-    (inst.starts_line or ''),
-    inst.offset,
-    dst_next or '',
-    dst_jump or '',
-    ('DST' if inst.is_jump_target else '   '),
-    inst.opname,
-    arg_msg), file=stderr)
+  find_traceable_edges(-1, -1, 0, ())
 
 
-#
+def err_inst(inst):
+  op = inst.opcode
+  line = inst.starts_line or ''
+  off = inst.offset
+  dst = ('DST' if inst.is_jump_target else '   ')
+  stop = 'stop' if op in stop_opcodes else '    '
+  if op in jump_opcodes:
+    target = f'jump {inst.argval:3}'
+  elif op in push_block_opcodes:
+    target = f'push {inst.argval:3}'
+  else: target = ''
+  arg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
+  print(f'  line:{line:>4}  off:{off:>3} {dst:3}  {stop} {target:8}  {inst.opname:26} {arg}', file=stderr)
+
+
 
 def report_path(target, path, coverage, totals, dbg):
   # import pithy libraries late, so that they do not get excluded from coverage.
@@ -496,28 +483,48 @@ SETUP_LOOP            = opmap['SETUP_LOOP']
 SETUP_WITH            = opmap['SETUP_WITH']
 
 # other opcodes that affect control flow.
+BREAK_LOOP            = opmap['BREAK_LOOP']
+END_FINALLY           = opmap['END_FINALLY']
+POP_BLOCK             = opmap['POP_BLOCK']
+POP_EXCEPT            = opmap['POP_EXCEPT']
 RETURN_VALUE          = opmap['RETURN_VALUE']
 YIELD_FROM            = opmap['YIELD_FROM']
 YIELD_VALUE           = opmap['YIELD_VALUE']
 
 # `hasjrel` includes the SETUP_* ops, which do not actually branch.
-# Instead, they specify an expected destination which is verified later?
 jump_opcodes = set(hasjabs) | {
   FOR_ITER,
   JUMP_FORWARD
 }
 
+# These codes push a block that specifies a jump destination for pop instructions.
+push_block_opcodes = {
+  SETUP_ASYNC_WITH,
+  SETUP_EXCEPT,
+  SETUP_FINALLY,
+  SETUP_LOOP,
+  SETUP_WITH,
+}
+
+pop_block_opcodes = {
+  BREAK_LOOP,
+  END_FINALLY,
+  POP_BLOCK,
+  POP_EXCEPT,
+}
+
 # the following opcodes never advance to the next instruction.
-unconditional_jump_opcodes = {
+stop_opcodes = {
+  BREAK_LOOP,
   CONTINUE_LOOP,
   JUMP_ABSOLUTE,
   JUMP_FORWARD,
   RETURN_VALUE,
-  #YIELD_FROM, # ??
-  #YIELD_VALUE, # ??
+  YIELD_FROM, # ??
+  YIELD_VALUE, # ??
 }
 
-# the falling opcodes appear always to trigger tracing.
+# the following opcodes appear always to trigger tracing due to 'return' trace type?
 breaking_opcodes = {
   RETURN_VALUE,
   YIELD_FROM,

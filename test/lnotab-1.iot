@@ -1,0 +1,3 @@
+{
+  'cmd': '$PROJ/cove.py test/lnotab.py 1',
+}

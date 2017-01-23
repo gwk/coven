@@ -1,0 +1,11 @@
+W
+cove report:
+
+__main__: test/lnotab.py:
+[30m   6 [0m    while a:[0m
+[30m   7 [0m      print('W')[0m
+[30m   8 [0m      break[0m
+[30m   9 [0m    else:[0m
+[30m  10 [31m!     print('E')[0m
+[30m  11 [0m  [0m
+__main__: test/lnotab.py: 12 lines; 7 traceable; 0 ignored; 0 IGNORED but covered; 1 NOT COVERED.
