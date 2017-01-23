@@ -41,11 +41,13 @@ def expand_targets(arg_targets):
     targets.add(expand_module_name_or_path(arg))
   return targets
 
+
 def expand_module_name_or_path(word):
   if word.endswith('.py') or '/' in word:
     return expand_module_path(word)
   else:
     return word
+
 
 def expand_module_path(path):
   slash_pos = path.find('/')
@@ -66,7 +68,7 @@ def trace_cmd(cmd, arg_targets, output_path, dbg):
   sys.argv = cmd.copy()
   exit_code = 0
   trace_set = install_trace(targets, dbg=dbg)
-  #if dbg: print('cove untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()), file=stderr)
+  #if dbg: errSL('cove untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()))
   try:
     run_path(cmd_head, run_name='__main__')
   except FileNotFoundError as e:
@@ -110,20 +112,20 @@ def install_trace(targets, dbg):
   def is_code_path_targeted(code):
     module = getmodule(code)
     if dbg:
-      print('cove.is_code_path_targeted: {}:{} -> {} -> {}'.format(
+      errSL('cove.is_code_path_targeted: {}:{} -> {} -> {}'.format(
         code.co_filename, code.co_name, module and module.__name__,
-        (module and module.__name__) in targets), file=stderr)
+        (module and module.__name__) in targets))
     if module is None: return False # probably a python builtin; not traceable.
     # note: the module filename may not equal the code filename.
     # example: .../python3.5/collections/abc.py != .../python3.5/_collections_abc.py
     # thus the following check sometimes fires, but it seems acceptable.
     #if dbg and module.__file__ != code.co_filename:
-    #  print('  note: module file: {} != code file: {}'.format(module.__file__, code.co_filename), file=stderr)
+    #  errSL('  note: module file: {} != code file: {}'.format(module.__file__, code.co_filename))
     is_target = (module.__name__ in targets)
     return is_target
 
   def cove_global_tracer(global_frame, global_event, _global_arg_is_none):
-    #print('GTRACE:', global_event, global_frame.f_lineno, global_frame.f_code.co_name)
+    #errSL('GTRACE:', global_event, global_frame.f_lineno, global_frame.f_code.co_name)
     if global_event != 'call': return None
     code = global_frame.f_code
     path = code.co_filename
@@ -141,7 +143,7 @@ def install_trace(targets, dbg):
     prev_off = -1
     def cove_local_tracer(frame, event, arg):
       nonlocal prev_line, prev_off
-      #print('LTRACE:', event, prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code.co_name, file=stderr)
+      #errSL('LTRACE:', event, prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code.co_name)
       traces.add((prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code)) # trace lines and offsets.
       prev_line = frame.f_lineno
       prev_off = frame.f_lasti
@@ -171,7 +173,7 @@ def gen_target_paths(targets, cmd_head, dbg):
       else: target_paths[target] = {module.__file__}
   if dbg:
     for t, p in sorted(target_paths.items()):
-      print('gen_target_paths: {} -> {}'.format(t, p), file=stderr)
+      errSL('gen_target_paths: {} -> {}'.format(t, p))
   return target_paths
 
 
@@ -247,7 +249,7 @@ def calculate_coverage(path, traces, dbg):
   NOTE: if analysis proves to be imperfect, we could use issuperset instead of equality.
   '''
   if dbg:
-    print('\ntrace: {}:'.format(path), file=stderr)
+    errSL('\ntrace: {}:'.format(path))
     traces = sorted_traces(traces)
   traced_codes = (t[-1] for t in traces)
   all_codes = list(visit_nodes(start_nodes=traced_codes, visitor=sub_codes))
@@ -281,7 +283,7 @@ def sub_codes(code):
 
 
 def crawl_code_insts(path, code, coverage, dbg):
-  if dbg: print('\ncrawl code: {}:{}'.format(path, code.co_name), file=stderr)
+  if dbg: errSL('\ncrawl code: {}:{}'.format(path, code.co_name))
 
   insts = list(get_instructions(code))
   if dbg:
@@ -290,7 +292,7 @@ def crawl_code_insts(path, code, coverage, dbg):
   visited = set()
   def find_traceable_edges(prev_line, prev_off, off, blocks):
     args = (prev_line, prev_off, off, blocks)
-    #print('FIND', args, file=stderr)
+    #errSL('FIND', args)
     if args in visited: return
     visited.add(args)
     index = off // 2 # this is incorrect prior to python3.6.
@@ -307,7 +309,7 @@ def crawl_code_insts(path, code, coverage, dbg):
         tt = (set(), set())
         coverage[line] = tt
       loc = (line, off, code)
-      #print('LOC', loc, file=stderr)
+      #errSL('LOC', loc)
       #assert loc not in tt[1]
       tt[1].add(loc)
       if dbg: err_trace('-', (prev_line, prev_off, line, off, code))
@@ -351,14 +353,13 @@ def err_inst(inst):
     target = f'push {inst.argval:3}'
   else: target = ''
   arg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
-  print(f'  line:{line:>4}  off:{off:>3} {dst:3}  {stop} {target:8}  {inst.opname:26} {arg}', file=stderr)
+  errSL(f'  line:{line:>4}  off:{off:>3} {dst:3}  {stop} {target:8}  {inst.opname:26} {arg}')
 
 
 
 def report_path(target, path, coverage, totals, dbg):
   # import pithy libraries late, so that they do not get excluded from coverage.
   from pithy.ansi import TXT_C, TXT_D, TXT_L, TXT_M, TXT_R, TXT_Y, RST
-  from pithy.io import errFL, outFL
   from pithy.iterable import closed_int_intervals
   from pithy.fs import path_rel_to_current_or_abs
 
@@ -380,11 +381,11 @@ def report_path(target, path, coverage, totals, dbg):
   totals.ignored_covered += ignored_covered
   totals.uncovered += uncovered_count
   if ignored_covered == 0 and uncovered_count == 0:
-    outFL('\n{}: {}: {} lines; {} traceable; {} ignored.',
-      target, rel_path, len(line_texts), len(coverage), len(ignored_lines))
+    print('\n{}: {}: {} lines; {} traceable; {} ignored.'.format(
+      target, rel_path, len(line_texts), len(coverage), len(ignored_lines)))
     return
 
-  outFL('\n{}: {}:', target, rel_path)
+  print(f'\n{target}: {rel_path}:')
   ctx_lead = 4
   ctx_tail = 1
   intervals = closed_int_intervals(sorted(uncovered_lines ^ ignored_lines))
@@ -420,15 +421,14 @@ def report_path(target, path, coverage, totals, dbg):
     except KeyError:
       cov = '   '
       sym = ' '
-    outFL('{dark}{line:4} {color}{sym} {text}{rst}',
-      dark=TXT_D, line=line, color=color, sym=sym, text=text, rst=RST)
+    print(f'{TXT_D}{line:4} {color}{sym} {text}{RST}')
     if line == tail_last:
       try: lead, start, last, tail_last = next_interval()
       except StopIteration: break
       else:
-        if line + 1 < lead: outFL('{dark}   …{rst}', dark=TXT_D, rst=RST)
-  outFL('{}: {}: {} lines; {} traceable; {} ignored; {} IGNORED but covered; {} NOT COVERED.',
-    target, rel_path, len(line_texts), len(coverage), len(ignored_lines), ignored_covered, uncovered_count)
+        if line + 1 < lead: print(f'{TXT_D}   …{RST}')
+  print('{}: {}: {} lines; {} traceable; {} ignored; {} IGNORED but covered; {} NOT COVERED.'.format(
+    target, rel_path, len(line_texts), len(coverage), len(ignored_lines), ignored_covered, uncovered_count))
 
 
 def calc_ignored_lines(line_texts):
@@ -452,19 +452,24 @@ def calc_ignored_lines(line_texts):
 def sorted_traces(traces):
   return sorted(traces, key=lambda t: (t[:-1], t[-1].co_name))
 
+
 def err_trace(label, trace):
-  print(label, 'l:', *(f'{el:4}' for el in trace[:-1]), end=';   ', file=stderr)
-  print(trace[-1].co_name, file=stderr)
+  errSL(label, 'l:', *(f'{el:4}' for el in trace[:-1]), end=';   ')
+  errSL(trace[-1].co_name)
+
 
 def err_traces(label, traces):
   for t in sorted_traces(traces):
     err_trace(label, t)
 
 
+def errSL(*items): print(*items, file=stderr)
+
+
 # Opcode information.
 
 # absolute jump codes.
-#print('JMP ABS:', *sorted(opname[op] for op in hasjabs))
+#errSL('JMP ABS:', *sorted(opname[op] for op in hasjabs))
 CONTINUE_LOOP         = opmap['CONTINUE_LOOP']
 JUMP_ABSOLUTE         = opmap['JUMP_ABSOLUTE']
 JUMP_IF_FALSE_OR_POP  = opmap['JUMP_IF_FALSE_OR_POP']
@@ -473,7 +478,7 @@ POP_JUMP_IF_FALSE     = opmap['POP_JUMP_IF_FALSE']
 POP_JUMP_IF_TRUE      = opmap['POP_JUMP_IF_TRUE']
 
 # relative jump codes.
-#print('JMP REL:', *sorted(opname[op] for op in hasjrel))
+#errSL('JMP REL:', *sorted(opname[op] for op in hasjrel))
 FOR_ITER              = opmap['FOR_ITER']
 JUMP_FORWARD          = opmap['JUMP_FORWARD']
 SETUP_ASYNC_WITH      = opmap['SETUP_ASYNC_WITH']
