@@ -12,7 +12,7 @@ from argparse import ArgumentParser
 from inspect import getmodule
 from os.path import abspath as abs_path, join as path_join, normpath as normalize_path
 from runpy import run_path
-from sys import exc_info, stderr, stdout, settrace
+from sys import exc_info, settrace, stderr, stdout
 from types import CodeType
 
 
@@ -125,16 +125,17 @@ def install_trace(targets, dbg):
     is_target = (module.__name__ in targets)
     return is_target
 
-  def cove_global_tracer(global_frame, global_event, _global_arg_is_none):
-    #errSL('GTRACE:', global_event, global_frame.f_lineno, global_frame.f_code.co_name)
-    if global_event != 'call': return None
-    code = global_frame.f_code
+  def cove_global_tracer(g_frame, g_event, _g_arg_is_none):
+    #errSL('GTRACE:', g_event, g_frame.f_lineno, g_frame.f_code.co_name)
+    if g_event != 'call': return None
+    code = g_frame.f_code
     path = code.co_filename
     try:
       is_target = file_name_filter[path]
     except KeyError:
       is_target = is_code_path_targeted(code)
       file_name_filter[path] = is_target
+
     if not is_target: return None # do not trace this scope.
 
     # the local tracer lives only as long as execution continues within the code block.
@@ -145,7 +146,7 @@ def install_trace(targets, dbg):
     def cove_local_tracer(frame, event, arg):
       nonlocal prev_line, prev_off
       #errSL('LTRACE:', event, prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code.co_name)
-      traces.add((prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code)) # trace lines and offsets.
+      traces.add((prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code))
       prev_line = frame.f_lineno
       prev_off = frame.f_lasti
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
