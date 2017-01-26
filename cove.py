@@ -304,7 +304,7 @@ def crawl_code_insts(path, code, coverage, dbg):
     line = starts_line or prev_line # note: this is the line trick described in lnotabs_notes.txt.
     assert inst.offset == off
     assert off or not inst.is_jump_target # this would make boolean tests on jump dsts unsafe.
-    if starts_line or (off < prev_off) or (op in breaking_opcodes):
+    if starts_line or (off < prev_off) or (op in traced_opcodes):
       # add loc.
       try: tt = coverage[line]
       except KeyError:
@@ -569,8 +569,8 @@ stop_opcodes = {
   YIELD_VALUE, # ??
 }
 
-# the following opcodes appear always to trigger tracing due to 'return' trace type?
-breaking_opcodes = {
+# the following opcodes always trigger tracing due to 'return' trace.
+traced_opcodes = {
   RETURN_VALUE,
   YIELD_FROM,
   YIELD_VALUE,
