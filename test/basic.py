@@ -1,52 +1,16 @@
-#!/usr/bin/env python3
 
 from sys import argv
 
 
-def main():
-
-  arg = int(argv[1])
+def top(arg):
   if arg:
-    called_one()
-    called_multi()
-    ignored_but_called_one()
-    ignored_but_called_multi()
+    inlined()
+    multi()
 
-  if arg: inlined() # tests inlined bodies.
+def inlined(): return None
 
-  i = 1 if arg else 0
-  while i: inlined(); i -= 1
-
-  for i in range(arg): inlined()
-
-
-def inlined(): pass
-
-
-def called_one(): return None
-
-def called_multi():
+def multi():
   return None
 
 
-# the if statements below need a variable condition,
-# because the python3.6.0 compiler is smart enough to elide the `if` when passed a constant.
-x = 0
-
-
-def ignored_but_called_one(): return None #no-cov!
-
-def ignored_but_called_multi():
-  if x: #no-cov!
-    return None
-  return None
-
-def ignored_never_called_one(): return None #no-cov!
-
-def ignored_never_called_multi():
-  if x: #no-cov!
-    return None
-  return None #no-cov!
-
-
-if __name__ == '__main__': main()
+for a in argv[1]: top(int(a))

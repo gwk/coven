@@ -1,0 +1,20 @@
+0
+cove report:
+
+__main__: ignored.py:
+[30m   4 [0m  [0m
+[30m   5 [0m  def top(on):[0m
+[30m   6 [0m    print(on)[0m
+[30m   7 [0m    if on:[0m
+[30m   8 [31m!     inline(on)[0m
+[30m   9 [31m!     multi(on)[0m
+[30m  10 [31m!     partial(on)[0m
+[30m  11 [0m  [0m
+[30m   …[0m
+[30m  18 [0m  [0m
+[30m  19 [0m  def partial(on):[0m
+[30m  20 [36m|   if on: #no-cov![0m
+[30m  21 [36m|     return on[0m
+[30m  22 [31m!   return None # never covered; assures that previous annotation is terminated.[0m
+[30m  23 [0m  [0m
+__main__: ignored.py: 25 lines; 17 traceable; 6 ignored; 0 IGNORED but covered; 4 NOT COVERED.

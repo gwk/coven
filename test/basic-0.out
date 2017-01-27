@@ -1,36 +1,16 @@
 cove report:
 
-__main__: test/basic.py:
-[30m   6 [0m  def main():[0m
-[30m   7 [0m  [0m
-[30m   8 [0m    arg = int(argv[1])[0m
-[30m   9 [0m    if arg:[0m
-[30m  10 [31m!     called_one()[0m
-[30m  11 [31m!     called_multi()[0m
-[30m  12 [31m!     ignored_but_called_one()[0m
-[30m  13 [31m!     ignored_but_called_multi()[0m
+__main__: basic.py:
+[30m   3 [0m  [0m
+[30m   4 [0m  [0m
+[30m   5 [0m  def top(on):[0m
+[30m   6 [0m    if on:[0m
+[30m   7 [31m!     inlined()[0m
+[30m   8 [31m!     multi()[0m
+[30m   9 [0m  [0m
+[30m  10 [31m% def inlined(): return None[0m
+[30m  11 [0m  [0m
+[30m  12 [0m  def multi():[0m
+[30m  13 [31m!   return None[0m
 [30m  14 [0m  [0m
-[30m  15 [0m    if arg: inlined() # tests inlined bodies.[0m
-[30m  16 [0m  [0m
-[30m  17 [0m    i = 1 if arg else 0[0m
-[30m  18 [31m%   while i: inlined(); i -= 1[0m
-[30m  19 [0m  [0m
-[30m  20 [31m%   for i in range(arg): inlined()[0m
-[30m  21 [0m  [0m
-[30m  22 [0m  [0m
-[30m  23 [31m% def inlined(): pass[0m
-[30m  24 [0m  [0m
-[30m  25 [0m  [0m
-[30m  26 [31m% def called_one(): return None[0m
-[30m  27 [0m  [0m
-[30m  28 [0m  def called_multi():[0m
-[30m  29 [31m!   return None[0m
-[30m  30 [0m  [0m
-[30m   …[0m
-[30m  38 [0m  [0m
-[30m  39 [0m  def ignored_but_called_multi():[0m
-[30m  40 [36m|   if x: #no-cov![0m
-[30m  41 [36m|     return None[0m
-[30m  42 [31m!   return None[0m
-[30m  43 [0m  [0m
-__main__: test/basic.py: 52 lines; 28 traceable; 7 ignored; 0 IGNORED but covered; 10 NOT COVERED.
+__main__: basic.py: 16 lines; 9 traceable; 0 ignored; 0 IGNORED but covered; 4 NOT COVERED.

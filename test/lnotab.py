@@ -1,12 +1,18 @@
-# The example from cpython lnotabs_notes.txt.
+# The example (in spirit) from cpython lnotabs_notes.txt.
+
 from sys import argv
 
-
-def f(a):
+x = ''
+def top(a):
+  global x
   while a:
-    print('W')
+    x = a
     break
   else:
-    print('E')
+    x = a
 
-f(int(argv[1]))
+
+for a in argv[1]:
+  i = int(a)
+  top(i)
+  assert x == i

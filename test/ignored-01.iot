@@ -1,0 +1,3 @@
+{
+  'cmd': '$PROJ/cove.py test/ignored.py 01',
+}
