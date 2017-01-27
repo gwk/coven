@@ -16,6 +16,9 @@ from sys import exc_info, settrace, stderr, stdout
 from types import CodeType
 
 
+inst_tracing = True
+
+
 def main():
   arg_parser = ArgumentParser(description='cove: code coverage harness.')
   arg_parser.add_argument('-targets', nargs='*', default=[])
@@ -142,18 +145,37 @@ def install_trace(targets, dbg):
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
     prev_line = -1
-    prev_off = -1
+    prev_off  = -1
     def cove_local_tracer(frame, event, arg):
       nonlocal prev_line, prev_off
-      #errSL('LTRACE:', event, prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code.co_name)
-      traces.add((prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code))
-      prev_line = frame.f_lineno
-      prev_off = frame.f_lasti
+      line = frame.f_lineno
+      off = frame.f_lasti
+      #errSL('LTRACE:', event, prev_line, prev_off, line, off, frame.f_code.co_name)
+      if event in ('instruction', 'line'):
+        traces.add((prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code))
+        prev_line = line
+        prev_off = off
+      elif event == 'return':
+        assert prev_line == line or prev_line == -2
+        assert prev_off == off or prev_off == -2
+        prev_line = -3
+        prev_off  = -3
+      elif event == 'exception':
+        assert prev_line == line
+        assert prev_off == off
+        prev_line = -2
+        prev_off  = -2
+      else: raise ValueError(event)
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
 
     return cove_local_tracer # global tracer installs a new local tracer for every call.
 
-  settrace(cove_global_tracer)
+  if inst_tracing:
+    try: settrace(cove_global_tracer, 'instruction')
+    except TypeError: exit('cove error: sys.settrace does not support instruction tracing (private patch)')
+  else:
+    settrace(cove_global_tracer)
+
   return traces
 
 
@@ -244,9 +266,9 @@ def gen_path_traces(trace_sets):
 def calculate_coverage(path, traces, dbg):
   '''
   Calculate and return the coverage data structure,
-  Which maps line numbers to (traced:Set[Loc], traceable:Set[Loc]) pairs.
-  Each set contains Loc tuples.
-  A Loc is (line, offset, code).
+  Which maps line numbers to (traced:Set[Edge], traceable:Set[Edge]) pairs.
+  Each set contains Edge tuples.
+  An Edge is (offset, code). TODO: use real edges.
   A line is fully covered if (traced == traceable).
   NOTE: if analysis proves to be imperfect, we could use issuperset instead of equality.
   '''
@@ -262,9 +284,13 @@ def calculate_coverage(path, traces, dbg):
     crawl_code_insts(path=path, code=code, coverage=coverage, dbg=dbg)
   # then fill in the traced sets.
   for trace in traces:
-    if dbg: err_trace('+', trace)
-    src_line, src_off, dst_line, dst_off, code = trace
-    coverage[dst_line][0].add((dst_line, dst_off, code))
+    pl, po, l, o, c = trace
+    if dbg: errSL(f'traced: {pl:4}:{po:4} -> {l:4}:{o:4}  {c.co_name}')
+    try: tt = coverage[l]
+    except KeyError:
+      tt = (set(), set())
+      coverage[l] = tt
+    tt[0].add((po, o, c))
   return coverage
 
 
@@ -288,6 +314,9 @@ def crawl_code_insts(path, code, coverage, dbg):
   if dbg: errSL('\ncrawl code: {}:{}'.format(path, code.co_name))
 
   insts = list(get_instructions(code))
+  lines = []
+  for inst in insts:
+    lines.append(inst.starts_line or lines[-1])
   if dbg:
     for inst in insts: err_inst(inst)
 
@@ -299,46 +328,60 @@ def crawl_code_insts(path, code, coverage, dbg):
     visited.add(args)
     index = off // 2 # this is incorrect prior to python3.6.
     inst = insts[index]
-    op = inst.opcode
-    starts_line = inst.starts_line
-    line = starts_line or prev_line # note: this is the line trick described in lnotabs_notes.txt.
     assert inst.offset == off
     assert off or not inst.is_jump_target # this would make boolean tests on jump dsts unsafe.
-    if starts_line or (off < prev_off) or (op in traced_opcodes):
-      # add loc.
+    op = inst.opcode
+    starts_line = inst.starts_line
+    # note: our interpretation of the line number tricks described in lnotabs_notes.txt.
+    if starts_line:
+      line = starts_line
+    elif off < prev_off:
+      line = lines[index]
+    else:
+      line = prev_line
+    if dbg: errSL(f'  edge: {prev_line:4}:{prev_off:4} -> {line:4}:{off:4}  stack: {fmt_blocks(blocks)}')
+    if True or starts_line or (off < prev_off) or (op in traced_opcodes):
+      # add edge.
       try: tt = coverage[line]
       except KeyError:
         tt = (set(), set())
         coverage[line] = tt
-      loc = (line, off, code)
-      #errSL('LOC', loc)
-      #assert loc not in tt[1]
-      tt[1].add(loc)
-      if dbg: err_trace('-', (prev_line, prev_off, line, off, code))
-    # block management.
-    # this is a guess, probably wrong.
+      edge = (prev_off, off, code) # not a true edge yet, just dst.
+      #assert edge not in tt[1]
+      tt[1].add(edge)
+    # block management; not yet complete.
     if op in push_block_opcodes:
-      block_dst = None
-      blocks = blocks + (inst.argval,)
+      dst = inst.argval
+      blocks = blocks + ((op, dst),)
+      if dbg: errSL('    push:', fmt_blocks(blocks))
+      if op == SETUP_EXCEPT:
+        find_traceable_edges(-2, -2, dst, blocks) # enter the exception handler from an unknown exception source.
     elif op in pop_block_opcodes:
-      block_dst = blocks[-1]
+      if dbg: errSL('    pop')
+      if not blocks: exit(f'ERROR: off: {off}: empty block stack for inst: {inst}')
+      popped_op, popped_dst = blocks[-1]
       blocks = blocks[:-1]
+      if op == BREAK_LOOP:
+        assert popped_op == SETUP_LOOP
+        find_traceable_edges(line, off, popped_dst, blocks)
+      if op == POP_BLOCK: pass
+      if op == POP_EXCEPT:
+        assert popped_op == SETUP_EXCEPT
+      if op == END_FINALLY:
+        assert popped_op in (SETUP_EXCEPT, SETUP_FINALLY)
     # note: we currently use recursion to explore the control flow graph.
     # this could hit the recursion limit for large code objects, and is probably slow.
     # alternatively we could:
     # * turn the second call into a fake tail call using a while loop around this whole function body;
     # * use visit_nodes, which would break ordering of dbg output.
-    if op == BREAK_LOOP:
-      find_traceable_edges(line, off, block_dst, blocks)
-      return
-    if op in jump_opcodes:
-      jmp = inst.argval # argval accounts for absolute vs relative offsets.
-      find_traceable_edges(line, off, jmp, blocks)
     if op not in stop_opcodes: # normal interpreter step forward.
       nxt = off + 2
       #^ as of python3.6, all opcodes take 2 bytes.
       # previously the next instruction was off + (1 if op < HAVE_ARGUMENT else 3).
       find_traceable_edges(line, off, nxt, blocks)
+    if op in jump_opcodes:
+      jmp = inst.argval # argval accounts for absolute vs relative offsets.
+      find_traceable_edges(line, off, jmp, blocks)
 
   find_traceable_edges(-1, -1, 0, ())
 
@@ -364,7 +407,7 @@ def report_path(target, path, coverage, totals, dbg):
 
   uncovered_lines = set() # lines that not are perfectly covered.
   for line, (traceable, traced) in coverage.items():
-    if traceable != traced:
+    if traceable != traced and not traced_contains_exc(traced):
       uncovered_lines.add(line)
 
   line_texts = [text.rstrip() for text in open(path).readlines()]
@@ -409,6 +452,9 @@ def report_path(target, path, coverage, totals, dbg):
         if line in ignored_lines:
           sym = '|'
           color = TXT_C
+        elif any(t[0] == -2 for t in traced): # relax for exception matching lines.
+          sym = '~'
+          color = TXT_C
         else:
           sym = '%' if traced else '!'
           color = TXT_R
@@ -450,6 +496,10 @@ def path_comps(path: str):
   if np == '/': return ['/']
   assert not np.endswith('/')
   return [comp or '/' for comp in np.split(os.sep)]
+
+
+def traced_contains_exc(traced):
+  return any(t[0] == -2 for t in traced)
 
 
 def calc_ignored_lines(line_texts):
@@ -507,6 +557,9 @@ def err_traces(label, traces):
     err_trace(label, t)
 
 
+def fmt_blocks(blocks):
+  return '|'.join(f'{push_abbrs[op]},{dst}' for op, dst in blocks)
+
 def errSL(*items): print(*items, file=stderr)
 
 
@@ -538,14 +591,21 @@ BREAK_LOOP            = opmap['BREAK_LOOP']
 END_FINALLY           = opmap['END_FINALLY']
 POP_BLOCK             = opmap['POP_BLOCK']
 POP_EXCEPT            = opmap['POP_EXCEPT']
+RAISE_VARARGS         = opmap['RAISE_VARARGS']
 RETURN_VALUE          = opmap['RETURN_VALUE']
 YIELD_FROM            = opmap['YIELD_FROM']
 YIELD_VALUE           = opmap['YIELD_VALUE']
 
-# `hasjrel` includes the SETUP_* ops, which do not actually branch.
-jump_opcodes = set(hasjabs) | {
+# `hasjrel` includes the SETUP_* ops, which do not actually branch on execution.
+jump_opcodes = {
+  CONTINUE_LOOP,
+  JUMP_ABSOLUTE,
+  JUMP_IF_FALSE_OR_POP,
+  JUMP_IF_TRUE_OR_POP,
+  POP_JUMP_IF_FALSE,
+  POP_JUMP_IF_TRUE,
   FOR_ITER,
-  JUMP_FORWARD
+  JUMP_FORWARD,
 }
 
 # These codes push a block that specifies a jump destination for pop instructions.
@@ -555,6 +615,14 @@ push_block_opcodes = {
   SETUP_FINALLY,
   SETUP_LOOP,
   SETUP_WITH,
+}
+
+push_abbrs = {
+  SETUP_ASYNC_WITH: 'A',
+  SETUP_EXCEPT:     'E',
+  SETUP_FINALLY:    'F',
+  SETUP_LOOP:       'L',
+  SETUP_WITH:       'W',
 }
 
 pop_block_opcodes = {
@@ -570,6 +638,7 @@ stop_opcodes = {
   CONTINUE_LOOP,
   JUMP_ABSOLUTE,
   JUMP_FORWARD,
+  RAISE_VARARGS,
   RETURN_VALUE,
   YIELD_FROM, # ??
   YIELD_VALUE, # ??

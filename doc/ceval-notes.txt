@@ -1,0 +1,121 @@
+most of the block pop instructions return a fixed WHY, so the static interpreter can just take the appropriate action. e.g. BREAK_LOOP pops a block, but CONTINUE_LOOP does not. RETURN and YIELD_* don't matter because they terminate the local analysis.
+
+RAISE_VARARGS looks ok, because it appears to maybe pop a block based on oparg, which the static interpreter has.
+
+END_FINALLY is the scary one. the WHY comes from TOS. maybe the static analyzer can chase all the possible WHY cases, or maybe it's impossible.
+
+--
+
+I looked at this some more, and while I still think it might be possible, it's way too hard for me to get into it. The fast_block_end code depends only on the current WHY and the block stack. As I previously noted, the current WHY comes from TOS in the END_FINALLY case. So the static evaluator could simulate the block stack and the value stack, and it might work. The value stack would be simulated for every op by pushing/popping according to the opcode. The values pushed would be the actual constant values that appear as opcode arguments, or some placeholder value (e.g.  '_dynamic_') for anything else.
+
+There are three cases in END_FINALLY:
+
+if (PyLong_Check(status)) { ... why = status; ... goto fast_block_end;}
+else if (PyExceptionClass_Check(status)) { ... why = WHY_EXCEPTION; ... goto fast_block_end }
+else if (status != Py_None) { error; status must be None. }
+else { break }
+
+So IF the Long and None cases always come from constants, which seems plausible, then we can reimplement the logic above as:
+
+if isinstance(status, int):
+  fast_block_end(status) # a WHY code loaded as a constant.
+else if satus == '__dynamic__': # assume that whatever is on the stack is an exception value.
+  fast_block_end(WHY_EXCEPTION)
+else:
+  assert status is None
+
+But in order to do this I'd have to implement static evaluation for every instruction that does push/pop, plus all of the push/pop in the stack unwinding. Plus I might not find out that I was wrong until the very end :)
+
+
+
+
+# Block Push
+
+SETUP_LOOP(delta)
+Pushes a block for a loop onto the block stack. The block spans from the current instruction with a size of delta bytes.
+
+SETUP_EXCEPT(delta)
+Pushes a try block from a try-except clause onto the block stack. delta points to the first except block.
+
+SETUP_FINALLY(delta)
+Pushes a try block from a try-except clause onto the block stack. delta points to the finally block.
+Note: even try/exept clauses without finally clauses begin with SETUP_FINALLY.
+
+SETUP_WITH(delta)
+This opcode performs several operations before a with block starts. First, it loads __exit__() from the context manager and pushes it onto the stack for later use by WITH_CLEANUP. Then, __enter__() is called, and a finally block pointing to delta is pushed. Finally, the result of calling the enter method is pushed onto the stack. The next opcode will either ignore it (POP_TOP), or store it in (a) variable(s) (STORE_FAST, STORE_NAME, or UNPACK_SEQUENCE).
+
+
+# Block Pop
+
+POP_BLOCK
+Pops any block.
+
+POP_EXCEPT
+Pops an except block (otherwise error), unwinding the value stack appropriately.
+
+END_FINALLY
+if TOS is a long then it is a why code;
+  if why == WHY_SILENCED:
+    "An exception was silenced by 'with'; we must manually unwind the EXCEPT_HANDLER block which was created when the exception was caught, otherwise the stack will be in an inconsistent state."
+    PyTryBlock *b = PyFrame_BlockPop(f);
+  goto fast_block_end
+elif TOS is an exception:
+  goto fast_block_end
+else:
+  assert TOS is None.
+
+
+# fast_block_end
+
+RAISE_VARARGS : WHY_EXCEPTION
+RETURN_VALUE : WHY_RETURN
+END_FINALLY : *see above.
+BREAK_LOOP: WHY_BREAK
+
+
+if op == CONTINUE_LOOP:
+  why = WHY_CONTINUE
+  fast_block_end(why)
+
+
+while (why != WHY_NOT && f->f_iblock > 0) {
+
+  if (b->b_type == SETUP_LOOP && why == WHY_CONTINUE) {
+    why = WHY_NOT;
+    JUMPTO(PyLong_AS_LONG(retval));
+
+  /* Now we have to pop the block. */
+  f->f_iblock--;
+
+  if (b->b_type == EXCEPT_HANDLER) {
+    UNWIND_EXCEPT_HANDLER(b);
+    continue;
+
+  if (b->b_type == SETUP_LOOP && why == WHY_BREAK) {
+    why = WHY_NOT;
+    JUMPTO(b->b_handler);
+
+  if (why == WHY_EXCEPTION && (b->b_type == SETUP_EXCEPT || b->b_type == SETUP_FINALLY)) {
+    PyFrame_BlockSetup(f, EXCEPT_HANDLER, -1, STACK_LEVEL());
+    JUMPTO(handler);
+    break;
+
+  if (b->b_type == SETUP_FINALLY) {
+    why = WHY_NOT;
+    JUMPTO(b->b_handler);
+
+
+
+
+BREAK_LOOP
+
+POP_BLOCK
+Removes one block from the block stack. Per frame, there is a stack of blocks, denoting nested loops, try statements, and such.
+
+POP_EXCEPT
+Removes one block from the block stack. The popped block must be an exception handler block, as implicitly created when entering an except handler. In addition to popping extraneous values from the frame stack, the last three popped values are used to restore the exception state.
+
+END_FINALLY
+Terminates a finally clause. The interpreter recalls whether the exception has to be re-raised, or whether the function returns, and continues with the outer-next block.
+
+
