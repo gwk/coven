@@ -350,12 +350,12 @@ def err_inst(inst):
   dst = ('DST' if inst.is_jump_target else '   ')
   stop = 'stop' if op in stop_opcodes else '    '
   if op in jump_opcodes:
-    target = f'jump {inst.argval:3}'
+    target = f'jump {inst.argval:4}'
   elif op in push_block_opcodes:
-    target = f'push {inst.argval:3}'
+    target = f'push {inst.argval:4}'
   else: target = ''
   arg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
-  errSL(f'  line:{line:>4}  off:{off:>3} {dst:3}  {stop} {target:8}  {inst.opname:26} {arg}')
+  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4}  {stop} {target:9}  {inst.opname:{onl}} {arg}')
 
 
 
@@ -397,8 +397,10 @@ def report_path(target, path, coverage, totals, dbg):
     assert line <= tail_last
     sym = ' '
     color = RST
-    try:
-      traced, traceable = coverage[line]
+    suffix = None
+    try: traced, traceable = coverage[line]
+    except KeyError: pass
+    else:
       if traced == traceable: # fully covered.
         if line in ignored_lines:
           sym = '?'
@@ -410,15 +412,17 @@ def report_path(target, path, coverage, totals, dbg):
         else:
           sym = '%' if traced else '!'
           color = TXT_R
+          suffix = f'{len(traced)} of {len(traceable)} possible edges covered.'
       else: # confused. traceable is missing something.
         sym = '\\'
         color = TXT_M
-        err_traces('{:4}: ERROR: -'.format(line), traceable)
-        err_traces('{:4}: ERROR: +'.format(line), traced)
-    except KeyError:
-      cov = '   '
-      sym = ' '
+        suffix = f'{len(traced)} of {len(traceable)} possible edges covered.'
     print(f'{TXT_D}{line:4} {color}{sym} {text}{RST}')
+    if suffix and dbg:
+      print(f'     {TXT_B}^ {suffix}{RST}')
+      err_traces(f'{TXT_D}{line:4} {TXT_B}-', traceable - traced)
+      err_traces(f'{TXT_D}{line:4} {TXT_B}=', traceable & traced)
+      err_traces(f'{TXT_D}{line:4} {TXT_B}+', traced - traceable)
     if line == tail_last:
       try: lead, start, last, tail_last = next_interval()
       except StopIteration: break
@@ -495,7 +499,7 @@ def sorted_traces(traces):
 
 
 def err_trace(label, trace):
-  errSL(label, 'l:', *(f'{el:4}' for el in trace[:-1]), ';  ', trace[-1].co_name)
+  errSL(label, *(f'{el:4}' for el in trace[:-1]), '  ', trace[-1].co_name)
 
 
 def err_traces(label, traces):
@@ -507,6 +511,8 @@ def errSL(*items): print(*items, file=stderr)
 
 
 # Opcode information.
+
+onl = max(len(name) for name in opname)
 
 # absolute jump codes.
 #errSL('JMP ABS:', *sorted(opname[op] for op in hasjabs))
@@ -577,8 +583,10 @@ traced_opcodes = {
 }
 
 RST = '\x1b[0m'
+TXT_B = '\x1b[34m'
 TXT_C = '\x1b[36m'
 TXT_D = '\x1b[30m'
+TXT_G = '\x1b[32m'
 TXT_L = '\x1b[37m'
 TXT_M = '\x1b[35m'
 TXT_R = '\x1b[31m'
