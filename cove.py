@@ -441,8 +441,6 @@ def path_rel_to_current_or_abs(path: str) -> str:
     return '.'
   if prefix == comps[:len(prefix)]:
     return path_join(*comps[len(prefix):])
-  errSL(comps)
-  errSL(prefix)
   return ap
 
 def path_comps(path: str):
