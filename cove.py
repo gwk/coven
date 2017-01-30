@@ -256,12 +256,11 @@ def gen_path_traces(trace_sets):
 def calculate_coverage(path, traces, dbg):
   '''
   Calculate and return the coverage data structure,
-  Which maps line numbers to (traced:Set[Edge], inferred:Set[Edge]) pairs.
+  Which maps line numbers to (required, possible, traced) triples of edge sets.
   Each set contains Edge tuples.
   An Edge is (prev_offset, offset, code).
-  A line is fully covered if (traced == traceable);
-  however there are some edges without known sources (i.e. incoming exceptions)
-  for which we use more relaxed comparison semantics.
+  A line is fully covered if (required <= traced <= possible).
+  However there are additional relaxation semantics.
   '''
   if dbg:
     errSL('\ntrace: {}:'.format(path))
@@ -269,7 +268,7 @@ def calculate_coverage(path, traces, dbg):
   traced_codes = (t[-1] for t in traces)
   all_codes = list(visit_nodes(start_nodes=traced_codes, visitor=sub_codes))
   if dbg: all_codes.sort(key=lambda code: code.co_name)
-  coverage = {} # (traced, inferred). Do not use defaultdict because reporting logic depends on KeyError.
+  coverage = {} # Do not use defaultdict because reporting logic depends on KeyError.
   # generate all possible traces.
   for code in all_codes:
     crawl_code_insts(path=path, code=code, coverage=coverage, dbg=dbg)
@@ -277,16 +276,19 @@ def calculate_coverage(path, traces, dbg):
   for trace in traces:
     pl, po, l, o, c = trace
     if dbg: errSL(f'traced: {pl:4}:{po:4} -> {l:4}:{o:4}  {c.co_name}')
-    add_edge(coverage, l, 0, po, o, c)
+    add_edge(coverage, l, COV_IDX_TRACED, po, o, c)
   return coverage
 
 
-def add_edge(coverage, line, index, prev_off, off, code):
-  try: ti = coverage[line]
+COV_IDX_REQUIRED, COV_IDX_OPTIONAL, COV_IDX_TRACED = range(3)
+
+
+def add_edge(coverage, line, cov_idx, prev_off, off, code):
+  try: t = coverage[line]
   except KeyError:
-    ti = (set(), set())
-    coverage[line] = ti
-  ti[index].add((prev_off, off, code))
+    t = (set(), set(), set())
+    coverage[line] = t
+  t[cov_idx].add((prev_off, off, code))
 
 
 def visit_nodes(start_nodes, visitor):
@@ -364,7 +366,7 @@ def crawl_code_insts(path, code, coverage, dbg):
     if use_inst_tracing or starts_line or (off < prev_off) or (op in traced_opcodes):
       # The edge might already exist, generated from the same prev_off but different prev_line.
       # If we abandon lnotabs line numbering then we can remove the prev_line parameter and assert that the edge is new.
-      add_edge(coverage, line, 1, prev_off, off, code)
+      add_edge(coverage, line, COV_IDX_REQUIRED, prev_off, off, code)
     if op == SETUP_EXCEPT:
       exc_dst = inst.argval
       # enter the exception handler from an unknown exception source.
@@ -473,11 +475,11 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   covered_lines = set() # line indices that not are perfectly covered.
   relaxed_lines = set() # line indices that are not perfectly covered but meet the relaxed requirement.
   not_cov_lines = set() # line indices that are not well covered.
-  for line, (traced, inferred) in coverage.items():
-    assert inferred
-    if traced == inferred:
+  for line, (required, possible, traced) in coverage.items():
+    assert required
+    if traced == required:
       covered_lines.add(line)
-    elif has_relaxed_coverage(traced, inferred):
+    elif has_relaxed_coverage(required, possible, traced):
       relaxed_lines.add(line)
     else:
       not_cov_lines.add(line)
@@ -521,7 +523,7 @@ def report_path(target, path, coverage, totals, show_all, dbg):
     color = RST
     sym = ' '
     needs_dbg = False
-    try: traced, traceable = coverage[line]
+    try: required, possible, traced = coverage[line]
     except KeyError: # trivial.
         color = TXT_L
     else:
@@ -563,7 +565,7 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   stats.describe(label)
 
 
-def has_relaxed_coverage(traced, inferred):
+def has_relaxed_coverage(required, possible, traced):
   'Currently there are no relaxation rules.'
   return False
 
