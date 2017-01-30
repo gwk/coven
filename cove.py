@@ -318,14 +318,25 @@ def crawl_code_insts(path, code, coverage, dbg):
   exception_match_jump_srcs = set() # jumps predicated on a preceding COMPARE_OP performing 'exception match'.
   blocks = [] # (op, dst) pairs.
   stacks = []
+  is_prev_exception_match = False
+
   for inst in insts:
     op = inst.opcode
     off = inst.offset
     index = off // 2
     lines.append(inst.starts_line or lines[-1])
-    if index and is_inst_exception_match(insts[index - 1]):
-      assert op == POP_JUMP_IF_FALSE
-      exception_match_jump_srcs.add(off)
+
+    # calculate if this instruction is doing an exception match,
+    # which will lead to a jump that results in the exception getting reraised.
+    if op == COMPARE_OP and inst.argrepr == 'exception match':
+      assert not is_prev_exception_match
+      is_prev_exception_match = True
+    elif is_prev_exception_match:
+      if op == POP_JUMP_IF_FALSE:
+        exception_match_jump_srcs.add(off)
+      elif op != EXTENDED_ARG: # the compare op may have extended args; propagate the flag.
+        is_prev_exception_match = False
+
     while blocks:
       # We assume here that the runtime lifespan of a block is really just a reflection of its static span.
       # I have no concrete evidence beyond observation that this is actually true.
@@ -333,18 +344,17 @@ def crawl_code_insts(path, code, coverage, dbg):
       assert d >= off
       if d > off: break
       blocks.pop()
+
     if op in push_block_opcodes:
       dst = inst.argval
       assert all(dst < d for _, d in blocks)
       blocks.append((op, dst))
-    stacks.append(tuple(blocks))
+    stack = tuple(blocks)
+    stacks.append(stack)
 
-  if dbg:
-    stack_max = max((len(s) for s in stacks), default=0)
-    for inst, stack in zip(insts, stacks):
+    if dbg:
       letters = ''.join(push_abbrs[op] for op, _ in stack)
-      stack_str = f'{letters:<{stack_max}}'
-      err_inst(inst, stack_str)
+      err_inst(inst, letters)
 
   visited = set()
   def find_traceable_edges(prev_line, prev_off, off, cov_idx):
@@ -407,14 +417,11 @@ def crawl_code_insts(path, code, coverage, dbg):
       find_traceable_edges(line, off, nxt, cov_idx)
     if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
+      # TODO: assert on the nature of this exception mathc jump dst? always END_FINALLY?
       idx = COV_IDX_OPTIONAL if (off in exception_match_jump_srcs) else cov_idx
       find_traceable_edges(line, off, jmp, idx)
 
   find_traceable_edges(-1, -1, 0, COV_IDX_REQUIRED)
-
-
-def is_inst_exception_match(inst):
-  return inst.opcode == COMPARE_OP and inst.argrepr == 'exception match'
 
 
 def err_inst(inst, stack):
@@ -429,7 +436,7 @@ def err_inst(inst, stack):
     target = f'push {inst.argval:4}'
   else: target = ''
   arg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
-  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4}  {stop} {target:9}  {stack}  {inst.opname:{onl}} {arg}')
+  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4}  {stop} {target:9}  {stack:8}  {inst.opname:{onl}} {arg}')
 
 
 
@@ -700,6 +707,7 @@ SETUP_WITH            = opmap['SETUP_WITH']
 BREAK_LOOP            = opmap['BREAK_LOOP']
 COMPARE_OP            = opmap['COMPARE_OP']
 END_FINALLY           = opmap['END_FINALLY']
+EXTENDED_ARG          = opmap['EXTENDED_ARG']
 POP_BLOCK             = opmap['POP_BLOCK']
 POP_EXCEPT            = opmap['POP_EXCEPT']
 RAISE_VARARGS         = opmap['RAISE_VARARGS']
