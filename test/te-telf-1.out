@@ -1,0 +1,29 @@
+cove report:
+
+__main__: test/te-telf-{}.py
+[30m   4 [37m  [0m
+[30m   5 [0m  def top(arg):[0m
+[30m   6 [0m    try:[0m
+[30m   7 [0m      try:[0m
+[30m   8 [31m%       try_(arg)[0m
+[30m   9 [0m      except ValueError:[0m
+[30m  10 [0m        except_ValueError()[0m
+[30m  11 [37m      else:[0m
+[30m  12 [31m!       else_()[0m
+[30m  13 [37m      finally:[0m
+[30m  14 [0m        finally_()[0m
+[30m  15 [31m!   except IndexError:[0m
+[30m  16 [31m!     pass[0m
+[30m  17 [37m  [0m
+[30m  18 [0m  def try_(arg):[0m
+[30m  19 [0m    if arg == 1:[0m
+[30m  20 [0m      raise ValueError[0m
+[30m  21 [31m!   if arg == 2:[0m
+[30m  22 [31m!     raise IndexError[0m
+[30m  23 [37m  [0m
+[30m  24 [37m  [0m
+[30m  25 [0m  def except_ValueError(): pass[0m
+[30m  26 [31m% def else_(): pass[0m
+[30m  27 [0m  def finally_(): pass[0m
+
+__main__: test/te-telf-{}.py: 30 lines; [37m10 trivial[0m; 20 traceable; 13 covered; 0 relaxed; 0 ignored; 0 ignored but covered; [31m7 not covered[0m.

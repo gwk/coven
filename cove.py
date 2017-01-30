@@ -256,10 +256,10 @@ def gen_path_traces(trace_sets):
 def calculate_coverage(path, traces, dbg):
   '''
   Calculate and return the coverage data structure,
-  Which maps line numbers to (required, possible, traced) triples of edge sets.
+  Which maps line numbers to (required, optional, traced) triples of edge sets.
   Each set contains Edge tuples.
   An Edge is (prev_offset, offset, code).
-  A line is fully covered if (required <= traced <= possible).
+  A line is fully covered if (required <= traced <= required&optional).
   However there are additional relaxation semantics.
   '''
   if dbg:
@@ -344,9 +344,10 @@ def crawl_code_insts(path, code, coverage, dbg):
       err_inst(inst, stack_str)
 
   visited = set()
-  def find_traceable_edges(prev_line, prev_off, off):
-    args = (prev_line, prev_off, off)
-    if args in visited: return
+  def find_traceable_edges(prev_line, prev_off, off, cov_idx):
+    is_opt = (cov_idx == COV_IDX_OPTIONAL)
+    args = (prev_line, prev_off, off, cov_idx)
+    if args in visited or (is_opt and (prev_line, prev_off, off, COV_IDX_REQUIRED) in visited): return
     visited.add(args)
     index = off // 2 # this is incorrect prior to python3.6.
     inst = insts[index]
@@ -362,22 +363,22 @@ def crawl_code_insts(path, code, coverage, dbg):
       line = lines[index]
     else:
       line = prev_line
-    if dbg: errSL(f'  edge: {prev_line:4}:{prev_off:4} -> {line:4}:{off:4}')
+    if dbg: errSL(f'  edge: {prev_line:4}:{prev_off:4} -> {line:4}:{off:4}  {"?" if cov_idx == COV_IDX_OPTIONAL else ""}')
     if use_inst_tracing or starts_line or (off < prev_off) or (op in traced_opcodes):
       # The edge might already exist, generated from the same prev_off but different prev_line.
       # If we abandon lnotabs line numbering then we can remove the prev_line parameter and assert that the edge is new.
-      add_edge(coverage, line, COV_IDX_REQUIRED, prev_off, off, code)
+      add_edge(coverage, line, cov_idx, prev_off, off, code)
     if op == SETUP_EXCEPT:
       exc_dst = inst.argval
       # enter the exception handler from an unknown exception source.
-      find_traceable_edges(OFF_RAISED, OFF_RAISED, exc_dst)
+      find_traceable_edges(OFF_RAISED, OFF_RAISED, exc_dst, cov_idx)
       # NOTE: Alternatively, we could expect an exception from every raising instruction.
       # However this would probably be overly strict in practice,
       # because it would require that try blocks isolate only call code that raises during coverage testing.
     elif op == BREAK_LOOP:
       for block_op, dst in reversed(stack):
         if block_op == SETUP_LOOP:
-          find_traceable_edges(line, off, dst)
+          find_traceable_edges(line, off, dst, cov_idx)
           return
       else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
     elif op == END_FINALLY:
@@ -387,8 +388,8 @@ def crawl_code_insts(path, code, coverage, dbg):
         if block_op == SETUP_FINALLY:
           # If SETUP_FINALLY block is found, create an edge only to dst.
           # Otherwise, fall through to emit edge to nxt.
-          # TODO: verify that instances of htis instruction can never do both.
-          find_traceable_edges(line, off, dst)
+          # TODO: verify that instances of this instruction can never do both.
+          find_traceable_edges(line, off, dst, cov_idx)
           return
 
     # note: we currently use recursion to explore the control flow graph.
@@ -400,12 +401,13 @@ def crawl_code_insts(path, code, coverage, dbg):
       nxt = off + 2
       #^ as of python3.6, all opcodes take 2 bytes.
       # previously the next instruction was off + (1 if op < HAVE_ARGUMENT else 3).
-      find_traceable_edges(line, off, nxt)
-    if op in jump_opcodes and off not in exception_match_jump_srcs:
+      find_traceable_edges(line, off, nxt, cov_idx)
+    if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
-      find_traceable_edges(line, off, jmp)
+      idx = COV_IDX_OPTIONAL if (off in exception_match_jump_srcs) else cov_idx
+      find_traceable_edges(line, off, jmp, idx)
 
-  find_traceable_edges(-1, -1, 0)
+  find_traceable_edges(-1, -1, 0, COV_IDX_REQUIRED)
 
 
 def is_inst_exception_match(inst):
@@ -472,17 +474,22 @@ def report_path(target, path, coverage, totals, show_all, dbg):
 
   line_texts = [text.rstrip() for text in open(path).readlines()]
 
-  covered_lines = set() # line indices that not are perfectly covered.
+  covered_lines = set() # line indices that are perfectly covered.
   relaxed_lines = set() # line indices that are not perfectly covered but meet the relaxed requirement.
   not_cov_lines = set() # line indices that are not well covered.
-  for line, (required, possible, traced) in coverage.items():
-    assert required
-    if traced == required:
+  impossible_lines = set()
+  for line, (required, optional, traced) in coverage.items():
+    possible = required | optional
+    assert possible # otherwise this item should never have been created.
+    unexpected = traced - possible
+    if traced >= required and not unexpected:
       covered_lines.add(line)
-    elif has_relaxed_coverage(required, possible, traced):
+    elif has_relaxed_coverage(possible, required, optional, traced, unexpected):
       relaxed_lines.add(line)
     else:
       not_cov_lines.add(line)
+      if unexpected:
+        impossible_lines.add(line)
 
   ignored_lines = calc_ignored_lines(line_texts)
   ign_cov_lines = ignored_lines & covered_lines
@@ -508,9 +515,10 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   ctx_lead = 4
   ctx_tail = 1
   if show_all:
-    intervals = iter([(0, len(line_texts))]) # single interval for entire document.
+    reported_lines = range(0, len(line_texts)) # entire document.
   else:
-    intervals = closed_int_intervals(sorted(not_cov_lines ^ ignored_lines))
+    reported_lines = sorted(impossible_lines | (not_cov_lines ^ ignored_lines))
+  intervals = closed_int_intervals(reported_lines)
 
   def next_interval():
     i = next(intervals)
@@ -523,7 +531,7 @@ def report_path(target, path, coverage, totals, show_all, dbg):
     color = RST
     sym = ' '
     needs_dbg = False
-    try: required, possible, traced = coverage[line]
+    try: required, optional, traced = coverage[line]
     except KeyError: # trivial.
         color = TXT_L
     else:
@@ -536,27 +544,31 @@ def report_path(target, path, coverage, totals, show_all, dbg):
         color = TXT_G
         sym = '~'
         needs_dbg = True
-      elif line in ignored_lines:
-        color = TXT_C
-        sym = '|'
-      elif line in not_cov_lines:
-        color = TXT_R
-        if traced:
-          sym = '%'
+      else:
+        assert line in not_cov_lines
+        if line in impossible_lines:
+          color = TXT_M
+          sym = '*'
           needs_dbg = True
-        else: # no coverage.
-          sym = '!'
-      else: # confused. traceable is missing something.
-        color = TXT_M
-        sym = '\\'
-        needs_dbg = True
+        elif line in ignored_lines:
+          color = TXT_C
+          sym = '|'
+        else:
+          color = TXT_R
+          if traced:
+            sym = '%'
+            needs_dbg = True
+          else: # no coverage.
+            sym = '!'
     print(f'{TXT_D}{line:4} {color}{sym} {text}{RST}')
     if dbg and needs_dbg:
-      suffix = f'{len(traced)} of {len(traceable)} possible edges covered.'
+      suffix = f'required:{len(required)} optional:{len(optional)} traced:{len(traced)}.'
       print(f'     {TXT_B}^ {suffix}{RST}')
-      err_traces(f'{TXT_D}{line:4} {TXT_B}-', traceable - traced)
-      err_traces(f'{TXT_D}{line:4} {TXT_B}=', traceable & traced)
-      err_traces(f'{TXT_D}{line:4} {TXT_B}+', traced - traceable)
+      possible = required | optional
+      err_traces(f'{TXT_D}{line:4} {TXT_B}-', required - traced)
+      err_traces(f'{TXT_D}{line:4} {TXT_B}o', optional - traced)
+      err_traces(f'{TXT_D}{line:4} {TXT_B}=', possible & traced)
+      err_traces(f'{TXT_D}{line:4} {TXT_B}+', traced - possible)
     if line == tail_last:
       try: lead, start, last, tail_last = next_interval()
       except StopIteration: break
@@ -565,9 +577,21 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   stats.describe(label)
 
 
-def has_relaxed_coverage(required, possible, traced):
-  'Currently there are no relaxation rules.'
-  return False
+def has_relaxed_coverage(possible, required, optional, traced, unexpected):
+  '''
+  When an exception match fails, it can jump to an END_FINALLY that rethrows the exception.
+  This will create a traced edge from the END_FINALLY to the SETUP_EXCEPT dst,
+  whereas the static analysis has emitted (OFF_RAISED, dst).
+  '''
+  raise_dsts = set()
+  for edge in required:
+    if edge in traced: continue
+    src, dst, _ = edge
+    if src != OFF_RAISED: return False
+    raise_dsts.add(dst)
+  for src, dst, _ in unexpected:
+    if dst not in raise_dsts: return False
+  return True
 
 
 def path_rel_to_current_or_abs(path: str) -> str:
