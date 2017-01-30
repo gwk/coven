@@ -90,6 +90,8 @@ def trace_cmd(cmd, arg_targets, output_path, show_all, dbg):
     print(*tbe.format(), sep='', end='', file=stderr)
   finally:
     settrace(None)
+    stdout.flush()
+    stderr.flush()
   sys.argv = orig_argv
   target_paths = gen_target_paths(targets, cmd_head, dbg=dbg)
   if output_path:
@@ -118,6 +120,7 @@ def install_trace(targets, dbg):
   def is_code_path_targeted(code):
     module = getmodule(code)
     if dbg:
+      stderr.flush()
       errSL('cove.is_code_path_targeted: {}:{} -> {} -> {}'.format(
         code.co_filename, code.co_name, module and module.__name__,
         (module and module.__name__) in targets))
