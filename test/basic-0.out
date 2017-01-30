@@ -1,6 +1,6 @@
 cove report:
 
-__main__: test/basic-{}.py
+__main__: test/basic-{}.py:
 [30m   3 [37m  [0m
 [30m   4 [37m  [0m
 [30m   5 [0m  def top(arg):[0m

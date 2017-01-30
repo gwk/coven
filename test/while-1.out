@@ -1,6 +1,6 @@
 cove report:
 
-__main__: test/while-{}.py
+__main__: test/while-{}.py:
 [30m  12 [0m    i = arg[0m
 [30m  13 [0m    while i:[0m
 [30m  14 [0m      while_()[0m

@@ -1,6 +1,6 @@
 cove report:
 
-__main__: test/inline-{}.py
+__main__: test/inline-{}.py:
 [30m   5 [0m  def top(arg):[0m
 [30m   6 [37m  [0m
 [30m   7 [0m    r_if = 0[0m

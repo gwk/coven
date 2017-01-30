@@ -1,6 +1,6 @@
 cove report:
 
-__main__: test/while-{}.py
+__main__: test/while-{}.py:
 [30m   9 [0m     while_()[0m
 [30m  10 [0m     i -= 1[0m
 [30m  11 [37m  [0m

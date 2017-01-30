@@ -511,7 +511,7 @@ def report_path(target, path, coverage, totals, show_all, dbg):
     stats.describe(label)
     return
 
-  print(label)
+  print(label, ':', sep='')
   ctx_lead = 4
   ctx_tail = 1
   if show_all:

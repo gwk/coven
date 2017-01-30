@@ -1,6 +1,6 @@
 cove report:
 
-__main__: test/basic-{}.py
+__main__: test/basic-{}.py:
 [30m   2 [0m  from sys import argv[0m
 [30m   3 [37m  [0m
 [30m   4 [37m  [0m

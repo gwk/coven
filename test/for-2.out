@@ -1,6 +1,6 @@
 cove report:
 
-__main__: test/for-{}.py
+__main__: test/for-{}.py:
 [30m   6 [37m  [0m
 [30m   7 [0m    for i in range(arg):[0m
 [30m   8 [0m      for_()[0m
