@@ -1,3 +1,0 @@
-{
-  'cmd': '$PROJ/cove.py test/inline.py 0 12',
-}

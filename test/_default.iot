@@ -1,3 +1,4 @@
 {
+  'interpreter': '$PROJ/cove.py',
   'links': 'test',
 }

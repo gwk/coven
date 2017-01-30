@@ -1,25 +1,29 @@
-1
 cove report:
 
-__main__: ignored.py:
-[30m   3 [0m  [0m
-[30m   4 [0m  [0m
+__main__: test/ignored-{}.py
+[30m   1 [37m  [0m
+[30m   2 [0m  from sys import argv[0m
+[30m   3 [37m  [0m
+[30m   4 [37m  [0m
 [30m   5 [0m  def top(on):[0m
-[30m   6 [0m    print(on)[0m
-[30m   7 [31m%   if on:[0m
-[30m   8 [0m      inline(on)[0m
-[30m   …[0m
-[30m  11 [0m  [0m
-[30m  12 [36m| def inline(on): return on if on else None #no-cov![0m
-[30m  13 [0m  [0m
-[30m  14 [0m  def multi(on):[0m
-[30m  15 [33m?   if on: #no-cov![0m
-[30m  16 [33m?     return on[0m
-[30m  17 [36m|   return None #no-cov![0m
-[30m  18 [0m  [0m
-[30m  19 [0m  def partial(on):[0m
-[30m  20 [33m?   if on: #no-cov![0m
-[30m  21 [33m?     return on[0m
-[30m  22 [31m!   return None # never covered; assures that previous annotation is terminated.[0m
-[30m  23 [0m  [0m
-__main__: ignored.py: 25 lines; 17 traceable; 6 ignored; 4 IGNORED but covered; 2 NOT COVERED.
+[30m   6 [31m%   if on:[0m
+[30m   7 [0m      inline(on)[0m
+[30m   8 [0m      multi(on)[0m
+[30m   9 [0m      partial(on)[0m
+[30m  10 [37m  [0m
+[30m  11 [36m| def inline(on): return on if on else None #no-cov![0m
+[30m  12 [37m  [0m
+[30m  13 [0m  def multi(on):[0m
+[30m  14 [33m?   if on: #no-cov![0m
+[30m  15 [33m?     return on[0m
+[30m  16 [36m|   return None #no-cov![0m
+[30m  17 [37m  [0m
+[30m  18 [0m  def partial(on):[0m
+[30m  19 [33m?   if on: #no-cov![0m
+[30m  20 [33m?     return on[0m
+[30m  21 [31m!   return None # never covered; this test assures that previous annotation is terminated.[0m
+[30m  22 [37m  [0m
+[30m  23 [37m  [0m
+[30m  24 [0m  for a in argv[1]: top(int(a))[0m
+
+__main__: test/ignored-{}.py: 24 lines; [37m8 trivial[0m; 16 traceable; 12 covered; 0 relaxed; [36m6 ignored[0m; [33m4 ignored but covered[0m; [31m2 not covered[0m.

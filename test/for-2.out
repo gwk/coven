@@ -1,0 +1,20 @@
+cove report:
+
+__main__: test/for-{}.py
+[30m   6 [37m  [0m
+[30m   7 [0m    for i in range(arg):[0m
+[30m   8 [0m      for_()[0m
+[30m   9 [37m  [0m
+[30m  10 [31m%   for i in range(arg):[0m
+[30m  11 [0m      for_()[0m
+[30m  12 [0m      if i:[0m
+[30m  13 [0m        break[0m
+[30m  14 [37m    else:[0m
+[30m  15 [31m!     else_()[0m
+[30m  16 [37m  [0m
+[30m  17 [37m  [0m
+[30m  18 [0m  def for_(): pass[0m
+[30m  19 [31m% def else_(): pass[0m
+[30m  20 [37m  [0m
+
+__main__: test/for-{}.py: 22 lines; [37m10 trivial[0m; 12 traceable; 9 covered; 0 relaxed; 0 ignored; 0 ignored but covered; [31m3 not covered[0m.

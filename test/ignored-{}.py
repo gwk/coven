@@ -3,7 +3,6 @@ from sys import argv
 
 
 def top(on):
-  print(on)
   if on:
     inline(on)
     multi(on)
@@ -19,7 +18,7 @@ def multi(on):
 def partial(on):
   if on: #no-cov!
     return on
-  return None # never covered; assures that previous annotation is terminated.
+  return None # never covered; this test assures that previous annotation is terminated.
 
 
-for a in argv[1:]: top(int(a))
+for a in argv[1]: top(int(a))

@@ -1,10 +1,11 @@
 cove report:
 
 __main__: test/basic-{}.py
+[30m   2 [0m  from sys import argv[0m
 [30m   3 [37m  [0m
 [30m   4 [37m  [0m
 [30m   5 [0m  def top(arg):[0m
-[30m   6 [0m    if arg:[0m
+[30m   6 [31m!   if arg:[0m
 [30m   7 [31m!     inlined()[0m
 [30m   8 [31m!     multi()[0m
 [30m   9 [37m  [0m
@@ -13,5 +14,7 @@ __main__: test/basic-{}.py
 [30m  12 [0m  def multi():[0m
 [30m  13 [31m!   return None[0m
 [30m  14 [37m  [0m
+[30m  15 [37m  [0m
+[30m  16 [31m% for a in argv[1]: top(int(a))[0m
 
-__main__: test/basic-{}.py: 16 lines; [37m7 trivial[0m; 9 traceable; 5 covered; 0 relaxed; 0 ignored; 0 ignored but covered; [31m4 not covered[0m.
+__main__: test/basic-{}.py: 16 lines; [37m7 trivial[0m; 9 traceable; 3 covered; 0 relaxed; 0 ignored; 0 ignored but covered; [31m6 not covered[0m.

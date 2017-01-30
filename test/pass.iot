@@ -1,3 +1,0 @@
-{
-  'cmd': '$PROJ/cove.py $STEM.py 0',
-}

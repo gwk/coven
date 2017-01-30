@@ -1,3 +1,3 @@
 cove report:
 
-__main__: test/pass.py: 1 lines; 1 traceable; 0 ignored.
+__main__: test/pass.py: 1 lines; 0 trivial; 1 traceable; 1 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 0 not covered.
