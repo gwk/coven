@@ -397,12 +397,12 @@ def crawl_code_insts(path, code, coverage, dbg):
     elif op == END_FINALLY:
       # The runtime semantics of END_FINALLY are very complicated.
       # We make some major assumptions about the static semantics of block unwinding here.
-      for block_op, dst in reversed(stack):
+      for block_op, block_dst in reversed(stack):
         if block_op == SETUP_FINALLY:
           # If SETUP_FINALLY block is found, create an edge only to dst.
           # Otherwise, fall through to emit edge to nxt.
           # TODO: verify that instances of this instruction can never do both.
-          find_traceable_edges(line, off, dst, cov_idx)
+          find_traceable_edges(line, off, block_dst, cov_idx)
           return
 
     # note: we currently use recursion to explore the control flow graph.
@@ -417,7 +417,7 @@ def crawl_code_insts(path, code, coverage, dbg):
       find_traceable_edges(line, off, nxt, cov_idx)
     if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
-      # TODO: assert on the nature of this exception mathc jump dst? always END_FINALLY?
+      # TODO: assert on the nature of this exception match jump dst? always END_FINALLY?
       idx = COV_IDX_OPTIONAL if (off in exception_match_jump_srcs) else cov_idx
       find_traceable_edges(line, off, jmp, idx)
 
