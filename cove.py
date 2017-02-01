@@ -6,6 +6,7 @@
 import sys; assert sys.version_info >= (3, 6, 0)
 import marshal
 import os
+import os.path
 import re
 from collections import defaultdict
 from dis import findlinestarts, get_instructions, hasjabs, hasjrel, opname, opmap
@@ -72,6 +73,10 @@ def trace_cmd(cmd, arg_targets, output_path, show_all, dbg):
   # we need to replace all of argv to provide the correct arguments to the command getting traced.
   orig_argv = sys.argv.copy()
   sys.argv = cmd.copy()
+  # also need to fix the search path to imitate the regular interpreter.
+  orig_path = sys.path
+  sys.path = orig_path.copy()
+  sys.path[0] = os.path.dirname(cmd[0]) # not sure if this is right in all cases.
   exit_code = 0
   trace_set = install_trace(targets, dbg=dbg)
   #if dbg: errSL('cove untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()))
