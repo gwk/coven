@@ -504,9 +504,10 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   ignored_lines = calc_ignored_lines(line_texts)
   ign_cov_lines = ignored_lines & covered_lines
 
+  length = len(line_texts)
   stats = Stats()
-  stats.lines = len(line_texts)
-  stats.trivial = max(0, len(line_texts) - len(coverage))
+  stats.lines = length
+  stats.trivial = max(0, length - len(coverage))
   stats.traceable = len(coverage)
   stats.covered = len(covered_lines)
   stats.relaxed = len(relaxed_lines)
@@ -525,65 +526,57 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   ctx_lead = 4
   ctx_tail = 1
   if show_all:
-    reported_lines = range(0, len(line_texts)) # entire document.
+    reported_lines = range(1, length + 1) # entire document, 1-indexed.
   else:
     reported_lines = sorted(impossible_lines | (not_cov_lines ^ ignored_lines))
-  intervals = closed_int_intervals(reported_lines)
-
-  def next_interval():
-    i = next(intervals)
-    return (i[0] - ctx_lead, i[0], i[1], i[1] + ctx_tail)
-
-  lead, start, last, tail_last = next_interval()
-  for line, text in enumerate(line_texts, 1):
-    if line < lead: continue
-    assert line <= tail_last
-    color = RST
-    sym = ' '
-    needs_dbg = False
-    try: required, optional, traced = coverage[line]
-    except KeyError: # trivial.
-        color = TXT_L
-    else:
-      if line in covered_lines:
-        if line in ign_cov_lines:
-          color = TXT_Y
-          sym = '?'
-        # else default symbol / color.
-      elif line in relaxed_lines:
-        color = TXT_G
-        sym = '~'
-        needs_dbg = True
+  ranges = line_ranges(reported_lines, before=4, after=1, terminal=length+1)
+  for r in ranges:
+    if r is None:
+      print(f'{TXT_D} ...{RST}')
+      continue
+    for line in r:
+      text = line_texts[line - 1] # line is a 1-index.
+      color = RST
+      sym = ' '
+      needs_dbg = False
+      try: required, optional, traced = coverage[line]
+      except KeyError: # trivial.
+          color = TXT_L
       else:
-        assert line in not_cov_lines
-        if line in impossible_lines:
-          color = TXT_M
-          sym = '*'
+        if line in covered_lines:
+          if line in ign_cov_lines:
+            color = TXT_Y
+            sym = '?'
+          # else default symbol / color.
+        elif line in relaxed_lines:
+          color = TXT_G
+          sym = '~'
           needs_dbg = True
-        elif line in ignored_lines:
-          color = TXT_C
-          sym = '|'
         else:
-          color = TXT_R
-          if traced:
-            sym = '%'
+          assert line in not_cov_lines
+          if line in impossible_lines:
+            color = TXT_M
+            sym = '*'
             needs_dbg = True
-          else: # no coverage.
-            sym = '!'
-    print(f'{TXT_D}{line:4} {color}{sym} {text}{RST}')
-    if dbg and needs_dbg:
-      suffix = f'required:{len(required)} optional:{len(optional)} traced:{len(traced)}.'
-      print(f'     {TXT_B}^ {suffix}{RST}')
-      possible = required | optional
-      err_traces(f'{TXT_D}{line:4} {TXT_B}-', required - traced)
-      err_traces(f'{TXT_D}{line:4} {TXT_B}o', optional - traced)
-      err_traces(f'{TXT_D}{line:4} {TXT_B}=', possible & traced)
-      err_traces(f'{TXT_D}{line:4} {TXT_B}+', traced - possible)
-    if line == tail_last:
-      try: lead, start, last, tail_last = next_interval()
-      except StopIteration: break
-      else:
-        if line + 1 < lead: print(f'{TXT_D}   …{RST}')
+          elif line in ignored_lines:
+            color = TXT_C
+            sym = '|'
+          else:
+            color = TXT_R
+            if traced:
+              sym = '%'
+              needs_dbg = True
+            else: # no coverage.
+              sym = '!'
+      print(f'{TXT_D}{line:4} {color}{sym} {text}{RST}')
+      if dbg and needs_dbg:
+        suffix = f'required:{len(required)} optional:{len(optional)} traced:{len(traced)}.'
+        print(f'     {TXT_B}^ {suffix}{RST}')
+        possible = required | optional
+        err_traces(f'{TXT_D}{line:4} {TXT_B}-', required - traced)
+        err_traces(f'{TXT_D}{line:4} {TXT_B}o', optional - traced)
+        err_traces(f'{TXT_D}{line:4} {TXT_B}=', possible & traced)
+        err_traces(f'{TXT_D}{line:4} {TXT_B}+', traced - possible)
   stats.describe(label)
 
 
@@ -640,28 +633,21 @@ def calc_ignored_lines(line_texts):
   return ignored
 
 
-def closed_int_intervals(iterable):
-  '''
-  Note: lifted from pithy.iterable. Please send changes upstream.
-  Given `iterable` of integers, yield a sequence of closed intervals.
-  '''
+def line_ranges(iterable, before, after, terminal):
+  'Group individual line numbers (1-indexed) into chunks.'
   it = iter(iterable)
-  try: first = next(it)
+  try: i = next(it)
   except StopIteration: return
-  if not isinstance(first, int):
-    raise TypeError('closed_int_intervals requires a sequence of int elements; received first element: {!r}', first)
-  interval = (first, first)
+  start = i - before
+  end = i + after + 1
   for i in it:
-    l, h = interval
-    if i < h:
-      raise ValueError('closed_int_intervals requires monotonically increasing elements')
-    if i == h: continue
-    if i == h + 1:
-      interval = (l, i)
-    else:
-      yield interval
-      interval = (i, i)
-  yield interval
+    # +1 bridges chunks that would otherwise elide a single line, appearing replaced by '...'.
+    if end + 1 < i - before:
+      yield range(max(1, start), min(end, terminal))
+      yield None # interstitial causes '...' to be printed.
+      start = i - before
+    end = i + after + 1
+  yield range(max(1, start), min(end, terminal))
 
 
 def sorted_traces(traces):

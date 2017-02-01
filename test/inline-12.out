@@ -9,7 +9,7 @@ __main__: test/inline-{}.py:
 [30m  10 [37m  [0m
 [30m  11 [31m%   r_while = 0[0m
 [30m  12 [0m    i = arg[0m
-[30m   …[0m
+[30m  13 [0m    while i: r_while = (1 if arg == 1 else arg); i -= 1[0m
 [30m  14 [37m  [0m
 [30m  15 [0m    r_for = 0[0m
 [30m  16 [0m    for i in range(arg): r_for = (1 if arg == 1 else arg)[0m
