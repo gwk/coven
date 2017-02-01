@@ -320,10 +320,12 @@ def crawl_code_insts(path, code, coverage, dbg):
 
   insts = list(get_instructions(code))
   lines = []
-  exception_match_jump_srcs = set() # jumps predicated on a preceding COMPARE_OP performing 'exception match'.
+  # track jumps predicated on a preceding COMPARE_OP performing 'exception match'.
+  # the jump dst is optional, because all possible exceptions cannot be reasonably covered.
+  exc_match_jump_srcs = set()
   blocks = [] # (op, dst) pairs.
   stacks = []
-  is_prev_exception_match = False
+  is_prev_exc_match = False
 
   for inst in insts:
     op = inst.opcode
@@ -334,13 +336,13 @@ def crawl_code_insts(path, code, coverage, dbg):
     # calculate if this instruction is doing an exception match,
     # which will lead to a jump that results in the exception getting reraised.
     if op == COMPARE_OP and inst.argrepr == 'exception match':
-      assert not is_prev_exception_match
-      is_prev_exception_match = True
-    elif is_prev_exception_match:
+      assert not is_prev_exc_match
+      is_prev_exc_match = True
+    elif is_prev_exc_match:
       if op == POP_JUMP_IF_FALSE:
-        exception_match_jump_srcs.add(off)
+        exc_match_jump_srcs.add(off)
       elif op != EXTENDED_ARG: # the compare op may have extended args; propagate the flag.
-        is_prev_exception_match = False
+        is_prev_exc_match = False
 
     while blocks:
       # We assume here that the runtime lifespan of a block is really just a reflection of its static span.
@@ -423,7 +425,7 @@ def crawl_code_insts(path, code, coverage, dbg):
     if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
       # TODO: assert on the nature of this exception match jump dst? always END_FINALLY?
-      idx = COV_IDX_OPTIONAL if (off in exception_match_jump_srcs) else cov_idx
+      idx = COV_IDX_OPTIONAL if (off in exc_match_jump_srcs) else cov_idx
       find_traceable_edges(line, off, jmp, idx)
 
   find_traceable_edges(-1, -1, 0, COV_IDX_REQUIRED)
