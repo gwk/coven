@@ -345,8 +345,13 @@ def crawl_code_insts(path, code, coverage, dbg):
         is_prev_exc_match = False
 
     while blocks:
-      # We assume here that the runtime lifespan of a block is really just a reflection of its static span.
-      # I have no concrete evidence beyond observation that this is actually true.
+      # We assume here that the runtime lifespan of a block is equivalent to its static span.
+      # According to cpython compile.c it's slightly more complicated;
+      # each block lifespan is statically terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
+      # however there might be multiple pop instructions for a single block (in different branches),
+      # so it is difficult te reconstruct.
+      # this heuristic is the best we can do for now.
+      # TODO: this should be an if not a while? verify pre and post condition.
       o, d = blocks[-1]
       assert d >= off
       if d > off: break
@@ -391,10 +396,9 @@ def crawl_code_insts(path, code, coverage, dbg):
     if op == SETUP_EXCEPT:
       exc_dst = inst.argval
       # enter the exception handler from an unknown exception source.
+      # this makes matching difficult because while we can trace raises with src=OFF_RAISED,
+      # reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
       find_traceable_edges(OFF_RAISED, OFF_RAISED, exc_dst, cov_idx)
-      # NOTE: Alternatively, we could expect an exception from every raising instruction.
-      # However this would probably be overly strict in practice,
-      # because it would require that try blocks isolate only call code that raises during coverage testing.
     elif op == BREAK_LOOP:
       for block_op, dst in reversed(stack):
         if block_op == SETUP_LOOP:
