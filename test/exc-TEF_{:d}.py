@@ -6,5 +6,7 @@ def top(arg):
     try_(arg)
   except E1:
     exc()
+  finally:
+    fin()
 
 handle_args(top)

@@ -1,0 +1,16 @@
+----------------
+Coverage Report:
+
+__main__: test/exc-TEE_{}.py:
+   2   from exc import *
+   3
+   4   def top(arg):
+   5     try:
+   6 %     try_(arg)
+   7     except E1:
+   8       exc()
+   9 !   except E2:
+  10 !     exc()
+  11
+
+__main__: test/exc-TEE_{}.py: 12 lines; 3 trivial; 9 traceable; 6 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 3 not covered.

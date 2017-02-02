@@ -1,0 +1,23 @@
+----------------
+Coverage Report:
+
+__main__: test/inline_{}.py:
+   4
+   5   def top(arg):
+   6
+   7     r_if = 0
+   8 %   if arg: r_if = (1 if arg == 1 else arg)
+   9     else: r_if == arg # 0 case only.
+  10
+  11     r_while = 0
+  12     i = arg
+  13 %   while i: r_while = (1 if arg == 1 else arg); i -= 1
+  14
+  15     r_for = 0
+  16 %   for i in range(arg): r_for = (1 if arg == 1 else arg)
+  17
+  18     try: raises_if(arg)
+  19 %   except Exception: r_exc = (1 if arg == 1 else arg)
+  20     else: r_exc = arg # 0 case only.
+
+__main__: test/inline_{}.py: 28 lines; 11 trivial; 17 traceable; 12 covered; 1 relaxed; 0 ignored; 0 ignored but covered; 4 not covered.

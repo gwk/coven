@@ -8,8 +8,6 @@ __main__: test/exc-TE_{:d}.py:
    4   def top(arg):
    5     try:
    6 %     try_(arg)
-   7 %   except E1:
-   8 !     exc()
-   9
+   7     except E1:
 
-__main__: test/exc-TE_{:d}.py: 10 lines; 3 trivial; 7 traceable; 4 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 3 not covered.
+__main__: test/exc-TE_{:d}.py: 10 lines; 3 trivial; 7 traceable; 6 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.

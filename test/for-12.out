@@ -1,3 +1,4 @@
-cove report:
+----------------
+Coverage Report:
 
-__main__: test/for-{}.py: 22 lines; [37m10 trivial[0m; 12 traceable; 12 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 0 not covered.
+__main__: test/for-{}.py: 22 lines; 10 trivial; 12 traceable; 12 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 0 not covered.

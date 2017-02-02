@@ -1,0 +1,21 @@
+----------------
+Coverage Report:
+
+__main__: test/basic_{}.py:
+   2   from sys import argv
+   3
+   4
+   5   def top(arg):
+   6 !   if arg:
+   7 !     inlined()
+   8 !     multi()
+   9
+  10 % def inlined(): return None
+  11
+  12   def multi():
+  13 !   return None
+  14
+  15
+  16 % for a in argv[1]: top(int(a))
+
+__main__: test/basic_{}.py: 16 lines; 7 trivial; 9 traceable; 3 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 6 not covered.

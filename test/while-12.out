@@ -1,3 +1,0 @@
-cove report:
-
-__main__: test/while-{}.py: 25 lines; [37m9 trivial[0m; 16 traceable; 16 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 0 not covered.

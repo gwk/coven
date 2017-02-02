@@ -1,0 +1,22 @@
+----------------
+Coverage Report:
+
+__main__: test/while_{}.py:
+   9      while_()
+  10      i -= 1
+  11
+  12     i = arg
+  13 %   while i:
+  14       while_()
+  15       if i == 2:
+  16         break
+  17 !     i -= 1
+  18     else:
+  19 !     else_()
+  20
+  21
+  22   def while_(): pass
+  23 % def else_(): pass
+  24
+
+__main__: test/while_{}.py: 25 lines; 9 trivial; 16 traceable; 12 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 4 not covered.

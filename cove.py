@@ -26,20 +26,21 @@ def main():
   arg_parser.add_argument('-targets', nargs='*', default=[])
   arg_parser.add_argument('-dbg', action='store_true')
   arg_parser.add_argument('-show-all', action='store_true')
+  arg_parser.add_argument('-color-on', dest='color', action='store_true', default=stdout.isatty())
+  arg_parser.add_argument('-color-off', dest='color', action='store_false')
   excl = arg_parser.add_mutually_exclusive_group()
   excl.add_argument('-coalesce', nargs='+')
   trace_group = excl.add_argument_group('trace')
   trace_group.add_argument('-output')
   trace_group.add_argument('cmd', nargs='*')
   args = arg_parser.parse_args()
-
   arg_targets = expand_targets(args.targets)
   if args.coalesce:
-    coalesce(args.coalesce, arg_targets=arg_targets, show_all=args.show_all, dbg=args.dbg)
+    coalesce(trace_paths=args.coalesce, arg_targets=arg_targets, args=args)
   else:
     if not args.cmd:
       arg_parser.error('please specify a command.')
-    trace_cmd(cmd=args.cmd, arg_targets=arg_targets, output_path=args.output, show_all=args.show_all, dbg=args.dbg)
+    trace_cmd(cmd=args.cmd, arg_targets=arg_targets, output_path=args.output, args=args)
 
 
 def expand_targets(arg_targets):
@@ -65,7 +66,7 @@ def expand_module_path(path):
   return stem.replace('/', '.')
 
 
-def trace_cmd(cmd, arg_targets, output_path, show_all, dbg):
+def trace_cmd(cmd, arg_targets, output_path, args):
   'NOTE: this must be called before importing any module that we might wish to trace with cove.'
   cmd_head = abs_path(cmd[0])
   targets = set(arg_targets or ['__main__'])
@@ -78,7 +79,7 @@ def trace_cmd(cmd, arg_targets, output_path, show_all, dbg):
   sys.path = orig_path.copy()
   sys.path[0] = os.path.dirname(cmd[0]) # not sure if this is right in all cases.
   exit_code = 0
-  trace_set = install_trace(targets, dbg=dbg)
+  trace_set = install_trace(targets, dbg=args.dbg)
   #if dbg: errSL('cove untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()))
   try:
     run_path(cmd_head, run_name='__main__')
@@ -98,12 +99,12 @@ def trace_cmd(cmd, arg_targets, output_path, show_all, dbg):
     stdout.flush()
     stderr.flush()
   sys.argv = orig_argv
-  target_paths = gen_target_paths(targets, cmd_head, dbg=dbg)
+  target_paths = gen_target_paths(targets, cmd_head, dbg=args.dbg)
   if output_path:
     write_coverage(output_path=output_path, target_paths=target_paths, trace_set=trace_set)
     exit(exit_code)
   else:
-    report(target_paths=target_paths, trace_sets=[trace_set], show_all=show_all, dbg=dbg)
+    report(target_paths=target_paths, trace_sets=[trace_set], args=args)
 
 
 def scrub_traceback(tbe):
@@ -218,7 +219,7 @@ def write_coverage(output_path, target_paths, trace_set):
     marshal.dump(data, f)
 
 
-def coalesce(trace_paths, arg_targets, show_all, dbg):
+def coalesce(trace_paths, arg_targets, args):
   target_paths = defaultdict(set)
   for arg_target in arg_targets:
     target_paths[arg_target]
@@ -233,11 +234,12 @@ def coalesce(trace_paths, arg_targets, show_all, dbg):
         trace_sets.append(data['trace_set'])
     except FileNotFoundError:
       exit('cove error: trace file not found: {}'.format(trace_path))
-  report(target_paths, trace_sets, show_all=show_all, dbg=dbg)
+  report(target_paths, trace_sets, args=args)
 
 
-def report(target_paths, trace_sets, show_all, dbg):
-  print('cove report:')
+def report(target_paths, trace_sets, args):
+  print('----------------')
+  print('Coverage Report:')
   path_traces = gen_path_traces(trace_sets)
   totals = Stats()
   for target, paths in sorted(target_paths.items()):
@@ -245,10 +247,10 @@ def report(target_paths, trace_sets, show_all, dbg):
       print('\n{}: NEVER IMPORTED.'.format(target))
       continue
     for path in sorted(paths):
-      coverage = calculate_coverage(path=path, traces=path_traces[path], dbg=dbg)
-      report_path(target=target, path=path, coverage=coverage, totals=totals, show_all=show_all, dbg=dbg)
+      coverage = calculate_coverage(path=path, traces=path_traces[path], dbg=args.dbg)
+      report_path(target=target, path=path, coverage=coverage, totals=totals, args=args)
   if len(target_paths) > 1:
-    print(totals.describe)
+    totals.describe('TOTAL', True if args.colors else '')
 
 
 def gen_path_traces(trace_sets):
@@ -292,6 +294,7 @@ COV_IDX_REQUIRED, COV_IDX_OPTIONAL, COV_IDX_TRACED = range(3)
 
 
 def add_edge(coverage, line, cov_idx, prev_off, off, code):
+  assert line >= 0
   try: t = coverage[line]
   except KeyError:
     t = (set(), set(), set())
@@ -316,13 +319,16 @@ def sub_codes(code):
 
 
 def crawl_code_insts(path, code, coverage, dbg):
-  if dbg: errSL('\ncrawl code: {}:{}'.format(path, code.co_name))
+  name = code.co_name
+  if dbg: errSL(f'\ncrawl code: {path}:{name}')
 
   insts = list(get_instructions(code))
   lines = []
   # track jumps predicated on a preceding COMPARE_OP performing 'exception match'.
-  # the jump dst is optional, because all possible exceptions cannot be reasonably covered.
+  # the jump dst is treated as optional, because all possible exceptions cannot be reasonably covered.
+  req_offs = set()
   exc_match_jump_srcs = set()
+  exc_match_jump_dsts = set()
   blocks = [] # (op, dst) pairs.
   stacks = []
   is_prev_exc_match = False
@@ -338,11 +344,14 @@ def crawl_code_insts(path, code, coverage, dbg):
     if op == COMPARE_OP and inst.argrepr == 'exception match':
       assert not is_prev_exc_match
       is_prev_exc_match = True
+      req_offs.add(off)
     elif is_prev_exc_match:
       if op == POP_JUMP_IF_FALSE:
         exc_match_jump_srcs.add(off)
-      elif op != EXTENDED_ARG: # the compare op may have extended args; propagate the flag.
+        exc_match_jump_dsts.add(inst.argval)
         is_prev_exc_match = False
+      else:
+        assert op == EXTENDED_ARG # the compare op may have extended args.
 
     while blocks:
       # We assume here that the runtime lifespan of a block is equivalent to its static span.
@@ -365,11 +374,14 @@ def crawl_code_insts(path, code, coverage, dbg):
     stacks.append(stack)
 
     if dbg:
+      exc_match = 'M' if off in exc_match_jump_srcs or off in exc_match_jump_dsts else ' '
       letters = ''.join(push_abbrs[op] for op, _ in stack)
-      err_inst(inst, letters)
+      err_inst(inst, exc_match, letters)
 
   visited = set()
   def find_traceable_edges(prev_line, prev_off, off, cov_idx):
+    if off in req_offs:
+      cov_idx = COV_IDX_REQUIRED
     is_opt = (cov_idx == COV_IDX_OPTIONAL)
     args = (prev_line, prev_off, off, cov_idx)
     if args in visited or (is_opt and (prev_line, prev_off, off, COV_IDX_REQUIRED) in visited): return
@@ -380,26 +392,37 @@ def crawl_code_insts(path, code, coverage, dbg):
     assert inst.offset == off
     assert off or not inst.is_jump_target # this would make boolean tests on jump dsts unsafe.
     op = inst.opcode
+
     starts_line = inst.starts_line
     # note: our interpretation of the line number tricks described in lnotabs_notes.txt.
     if starts_line:
       line = starts_line
     elif off < prev_off:
       line = lines[index]
+    elif prev_line < 0: # this is not an lnotabs rule, but necessary for exception edges.
+      assert prev_line == OFF_RAISED
+      line = lines[index]
     else:
       line = prev_line
-    if dbg: errSL(f'  edge: {prev_line:4}:{prev_off:4} -> {line:4}:{off:4}  {"?" if cov_idx == COV_IDX_OPTIONAL else ""}')
+
+    if dbg:
+      opt = '?' if cov_idx == COV_IDX_OPTIONAL else ''
+      errSL(f'  edge: {prev_line:4}:{prev_off:4} -> {line:4}:{off:4}  {opt}')
+
     if use_inst_tracing or starts_line or (off < prev_off) or (op in traced_opcodes):
       # The edge might already exist, generated from the same prev_off but different prev_line.
       # If we abandon lnotabs line numbering then we can remove the prev_line parameter and assert that the edge is new.
       add_edge(coverage, line, cov_idx, prev_off, off, code)
+
     if op == SETUP_EXCEPT:
-      exc_dst = inst.argval
       # Enter the exception handler from an unknown exception source.
       # This makes matching harder because while we can trace raises with src=OFF_RAISED,
       # eraises do not get traced and so they have src offset of the END_FINALLY that reraises.
       # The solution is to use reduce_exc_edges().
-      find_traceable_edges(OFF_RAISED, OFF_RAISED, exc_dst, cov_idx)
+      find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, cov_idx)
+    elif op == SETUP_FINALLY:
+      if is_SETUP_FINALLY_exc_pad(insts, index, path, name): # omit outer exception pad for code that looks like TEF.
+        find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, cov_idx)
     elif op == BREAK_LOOP:
       for block_op, dst in reversed(stack):
         if block_op == SETUP_LOOP:
@@ -407,9 +430,9 @@ def crawl_code_insts(path, code, coverage, dbg):
           return
       else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
     elif op == END_FINALLY:
-      # The runtime semantics of END_FINALLY are complicated.
-      # END_FINALLY can either reraise an exception, or step to the next instruction.
-      # or in two runtime cases continue execution to the next instruction:
+      # The semantics of END_FINALLY are complicated.
+      # END_FINALLY can either reraise an exception
+      # or in two cases continue execution to the next instruction:
       # * a `with` __exit__ might return True, silencing an exception.
       #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
       # * TOS is None.
@@ -417,10 +440,12 @@ def crawl_code_insts(path, code, coverage, dbg):
       #   * Beyond that, hard to say.
       #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
       for block_op, block_dst in reversed(stack):
-        if block_op == SETUP_FINALLY: # create an edge to dst.
-          # Can also fall through to emit edge to nxt.
+        if block_op == SETUP_FINALLY: # create an edge to next handler dst.
           find_traceable_edges(line, off, block_dst, cov_idx)
-          return
+          return # TODO: it may be that this case can also step to next.
+      # TODO: handle WITH_CLEANUP_FINISH case.
+      if off in exc_match_jump_dsts: # can never step to next.
+        return
 
     # note: we currently use recursion to explore the control flow graph.
     # this could hit the recursion limit for large code objects, and is probably slow.
@@ -441,7 +466,7 @@ def crawl_code_insts(path, code, coverage, dbg):
   find_traceable_edges(-1, -1, 0, COV_IDX_REQUIRED)
 
 
-def err_inst(inst, stack):
+def err_inst(inst, exc_match, stack):
   op = inst.opcode
   line = inst.starts_line or ''
   off = inst.offset
@@ -453,8 +478,78 @@ def err_inst(inst, stack):
     target = f'push {inst.argval:4}'
   else: target = ''
   arg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
-  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4}  {stop} {target:9}  {stack:8}  {inst.opname:{onl}} {arg}')
+  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4} {exc_match} {stop} {target:9}  {stack:8}  {inst.opname:{onl}} {arg}')
 
+
+def is_SETUP_FINALLY_exc_pad(insts, index, path, code_name):
+  '''
+  Some SETUP_FINALLY imply an expected exception edge, but others do not.
+
+  For a try/except/finally, we do not expect coverage for the case where
+  an exception is raised but does not match the except clause,
+  because typical code catches some but not all possible exceptions.
+  In this case SETUP_FINALLY should not emit an exception edge,
+  because the SETUP_EXCEPT that immediately follows will emit its own exception edge.
+
+  However, for a try/finally, there is no SETUP_EXCEPT, so SETUP_FINALLY does emit.
+
+  Unfortunately for us there is a pathological case, "TF-TE-R":
+  try:
+    try: ...
+    except: ...
+    <code>
+  finally: ...
+  The compiler emits consecutive SETUP_FINALLY, SETUP_EXCEPT for this code as well,
+  but unlike TEF, here we *do* want a second exception edge in case <code> raises.
+
+  This heuristic attempts to detect TEF, as distinct from TF-TE.
+  If it fails, than any exception raised by TF-TE's <code> will be flagged as an impossible edge.
+
+  Separately, compile.c:compiler_try_except emits a nested SETUP_FINALLY for `except _ as <name>`.
+  It generates finally code to delete <name>.
+  This instruction sequence appears easy to recognize, but is again just a heuristic that may fail.
+  '''
+  inst = insts[index]
+  assert inst.opcode == SETUP_FINALLY
+  dst_index = inst.argval // 2
+  dst_inst = insts[dst_index]
+  next_inst = insts[index + 1] # safe, SETUP_FINALLY is never the last instruction.
+  if next_inst.opcode == SETUP_EXCEPT:
+    # looks like TEF, but might be TF-TE.
+    # this heuristic is likely to fail, but will get us through the tests at least.
+    exc_dst_inst = insts[next_inst.argval // 2]
+    op = exc_dst_inst.opcode
+    if op == DUP_TOP: return False # TEF.
+    if op == POP_TOP: return True # TF-TE.
+    errSL(f'cove WARNING: is_SETUP_FINALLY_exc_pad: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
+    return False # if the code does actually raise it will be flagged as impossible.
+
+  # `except _ as <name>` heuristic.
+  if match_insts(insts, dst_index - 3, (
+    POP_BLOCK,
+    POP_EXCEPT,
+    (LOAD_CONST, None),
+    (LOAD_CONST, None), # this is at dst_index.
+    STORE_FAST,
+    DELETE_FAST,
+    END_FINALLY)):
+    return False # not an exception that would be reasonably covered.
+
+  return True
+
+
+def match_insts(insts, start, expected):
+  if start < 0: return False
+  end = start + len(expected)
+  if len(insts) < end: return False
+  return all(map(match_inst, insts[start:end], expected))
+
+def match_inst(inst, exp):
+  if isinstance(exp, tuple):
+    op, arg = exp
+    return inst.opcode == op and inst.argval == arg
+  else:
+    return inst.opcode == exp
 
 
 class Stats:
@@ -479,25 +574,25 @@ class Stats:
     self.ignored_but_covered += stats.ignored_but_covered
     self.not_covered += stats.not_covered
 
-  def describe_stat(self, name, val):
+  def describe_stat(self, name, val, c):
     colors = {
-      'trivial' : TXT_L,
-      'relaxed' : TXT_G,
-      'ignored' : TXT_C,
-      'ignored_but_covered' : TXT_Y,
-      'not_covered' : TXT_R
+      'trivial' : c and TXT_L,
+      'relaxed' : c and TXT_G,
+      'ignored' : c and TXT_C,
+      'ignored_but_covered' : c and TXT_Y,
+      'not_covered' : c and TXT_R,
     }
     color = colors.get(name, '') if val > 0 else ''
     rst = RST if color else ''
     display_name = name.replace('_', ' ')
     return f'{color}{val} {display_name}{rst}'
 
-  def describe(self, label):
+  def describe(self, label, c):
     s = self
-    print(label, ': ', '; '.join(self.describe_stat(name, val) for name, val in self.__dict__.items()), '.', sep='')
+    print(label, ': ', '; '.join(self.describe_stat(name, val, c) for name, val in self.__dict__.items()), '.', sep='')
 
 
-def report_path(target, path, coverage, totals, show_all, dbg):
+def report_path(target, path, coverage, totals, args):
 
   line_texts = [text.rstrip() for text in open(path).readlines()]
 
@@ -535,68 +630,76 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   stats.not_covered = len(not_cov_lines - ignored_lines)
   totals.add(stats)
 
+  c = True if args.color else ''
   rel_path = path_rel_to_current_or_abs(path)
   label = f'\n{target}: {rel_path}'
-  if not (show_all or ign_cov_lines or not_cov_lines):
-    stats.describe(label)
+  if not (args.show_all or ign_cov_lines or not_cov_lines):
+    stats.describe(label, c)
     return
 
+  RST1 = c and RST
+  TXT_B1 = c and TXT_B
+  TXT_C1 = c and TXT_C
+  TXT_D1 = c and TXT_D
+  TXT_G1 = c and TXT_G
+  TXT_L1 = c and TXT_L
+  TXT_M1 = c and TXT_M
+  TXT_R1 = c and TXT_R
+  TXT_Y1 = c and TXT_Y
   print(label, ':', sep='')
-  ctx_lead = 4
-  ctx_tail = 1
-  if show_all:
+  if args.show_all:
     reported_lines = range(1, length + 1) # entire document, 1-indexed.
   else:
     reported_lines = sorted(impossible_lines | (not_cov_lines ^ ignored_lines))
   ranges = line_ranges(reported_lines, before=4, after=1, terminal=length+1)
   for r in ranges:
     if r is None:
-      print(f'{TXT_D} ...{RST}')
+      print(f'{TXT_D1} ...{RST1}')
       continue
     for line in r:
       text = line_texts[line - 1] # line is a 1-index.
-      color = RST
+      color = RST1
       sym = ' '
       needs_dbg = False
       try: required, optional, traced = coverage[line]
       except KeyError: # trivial.
-          color = TXT_L
+          color = TXT_L1
       else:
         if line in covered_lines:
           if line in ign_cov_lines:
-            color = TXT_Y
+            color = TXT_Y1
             sym = '?'
           # else default symbol / color.
         elif line in relaxed_lines:
-          color = TXT_G
+          color = TXT_G1
           sym = '~'
           needs_dbg = True
         else:
           assert line in not_cov_lines
           if line in impossible_lines:
-            color = TXT_M
+            color = TXT_M1
             sym = '*'
             needs_dbg = True
           elif line in ignored_lines:
-            color = TXT_C
+            color = TXT_C1
             sym = '|'
           else:
-            color = TXT_R
+            color = TXT_R1
             if traced:
               sym = '%'
               needs_dbg = True
             else: # no coverage.
               sym = '!'
-      print(f'{TXT_D}{line:4} {color}{sym} {text}{RST}')
-      if dbg and needs_dbg:
+      print(f'{TXT_D1}{line:4} {color}{sym} {text}{RST1}'.rstrip())
+      if args.dbg and needs_dbg:
         suffix = f'required:{len(required)} optional:{len(optional)} traced:{len(traced)}.'
-        print(f'     {TXT_B}^ {suffix}{RST}')
+        print(f'     {TXT_B1}^ {suffix}{RST1}')
         possible = required | optional
-        err_traces(f'{TXT_D}{line:4} {TXT_B}-', required - traced)
-        err_traces(f'{TXT_D}{line:4} {TXT_B}o', optional - traced)
-        err_traces(f'{TXT_D}{line:4} {TXT_B}=', possible & traced)
-        err_traces(f'{TXT_D}{line:4} {TXT_B}+', traced - possible)
-  stats.describe(label)
+        err_traces(f'{TXT_D1}{line:4} {TXT_B1}-', required - traced)
+        err_traces(f'{TXT_D1}{line:4} {TXT_B1}o', optional - traced)
+        err_traces(f'{TXT_D1}{line:4} {TXT_B1}=', possible & traced)
+        err_traces(f'{TXT_D1}{line:4} {TXT_B1}+', traced - possible)
+  stats.describe(label, c)
 
 
 def reduce_exc_edges(traced, possible):
@@ -647,12 +750,16 @@ def calc_ignored_lines(line_texts):
 
 def line_ranges(iterable, before, after, terminal):
   'Group individual line numbers (1-indexed) into chunks.'
+  assert terminal > 0
   it = iter(iterable)
-  try: i = next(it)
+  try:
+    i = next(it)
+    assert i > 0
   except StopIteration: return
   start = i - before
   end = i + after + 1
   for i in it:
+    assert i > 0
     # +1 bridges chunks that would otherwise elide a single line, appearing replaced by '...'.
     if end + 1 < i - before:
       yield range(max(1, start), min(end, terminal))
@@ -704,12 +811,17 @@ SETUP_WITH            = opmap['SETUP_WITH']
 # other opcodes of interest.
 BREAK_LOOP            = opmap['BREAK_LOOP']
 COMPARE_OP            = opmap['COMPARE_OP']
+DELETE_FAST           = opmap['DELETE_FAST']
+DUP_TOP               = opmap['DUP_TOP']
 END_FINALLY           = opmap['END_FINALLY']
 EXTENDED_ARG          = opmap['EXTENDED_ARG']
+LOAD_CONST            = opmap['LOAD_CONST']
 POP_BLOCK             = opmap['POP_BLOCK']
 POP_EXCEPT            = opmap['POP_EXCEPT']
+POP_TOP               = opmap['POP_TOP']
 RAISE_VARARGS         = opmap['RAISE_VARARGS']
 RETURN_VALUE          = opmap['RETURN_VALUE']
+STORE_FAST            = opmap['STORE_FAST']
 YIELD_FROM            = opmap['YIELD_FROM']
 YIELD_VALUE           = opmap['YIELD_VALUE']
 

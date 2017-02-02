@@ -1,11 +1,12 @@
-cove report:
+----------------
+Coverage Report:
 
 __main__: test/for-{}.py:
-[30m   9 [37m  [0m
-[30m  10 [0m    for i in range(arg):[0m
-[30m  11 [0m      for_()[0m
-[30m  12 [0m      if i:[0m
-[30m  13 [31m!       break[0m
-[30m  14 [37m    else:[0m
+   9
+  10     for i in range(arg):
+  11       for_()
+  12       if i:
+  13 !       break
+  14     else:
 
-__main__: test/for-{}.py: 22 lines; [37m10 trivial[0m; 12 traceable; 11 covered; 0 relaxed; 0 ignored; 0 ignored but covered; [31m1 not covered[0m.
+__main__: test/for-{}.py: 22 lines; 10 trivial; 12 traceable; 11 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.

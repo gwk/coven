@@ -1,0 +1,15 @@
+handle_args: char:1; exception: E1().
+----------------
+Coverage Report:
+
+__main__: test/exc-TF_{:d}.py:
+   2   from exc import *
+   3
+   4   def top(arg):
+   5     try:
+   6 %     try_(arg)
+   7     finally:
+   8 %     fin()
+   9
+
+__main__: test/exc-TF_{:d}.py: 10 lines; 4 trivial; 6 traceable; 4 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 2 not covered.

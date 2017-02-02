@@ -1,0 +1,18 @@
+handle_args: char:1; exception: TestException().
+----------------
+Coverage Report:
+
+__main__: test/exc-TF-TE-R_{}.py:
+   4   def top(arg):
+   5     try:
+   6       try:
+   7         try_(arg, raise_start=2)
+   8 !     except:
+   9 !       exc()
+  10 %     if arg == 1:
+  11         raise TestException # this tests the is_TEF heuristic.
+  12     finally:
+  13 %     fin()
+  14
+
+__main__: test/exc-TF-TE-R_{}.py: 15 lines; 4 trivial; 11 traceable; 7 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 4 not covered.

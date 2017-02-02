@@ -1,0 +1,4 @@
+----------------
+Coverage Report:
+
+__main__: test/inline_{}.py: 28 lines; 11 trivial; 17 traceable; 15 covered; 2 relaxed; 0 ignored; 0 ignored but covered; 0 not covered.

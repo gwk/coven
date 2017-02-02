@@ -1,0 +1,13 @@
+----------------
+Coverage Report:
+
+__main__: test/lnotab_{}.py:
+   5   x = ''
+   6   def top(a):
+   7     global x
+   8     while a:
+   9 !     x = a
+  10 !     break
+  11     else:
+
+__main__: test/lnotab_{}.py: 18 lines; 7 trivial; 11 traceable; 8 covered; 0 relaxed; 1 ignored; 0 ignored but covered; 2 not covered.
