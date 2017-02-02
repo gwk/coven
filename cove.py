@@ -347,11 +347,11 @@ def crawl_code_insts(path, code, coverage, dbg):
     while blocks:
       # We assume here that the runtime lifespan of a block is equivalent to its static span.
       # According to cpython compile.c it's slightly more complicated;
-      # each block lifespan is statically terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
+      # each block lifespan is terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
       # however there might be multiple pop instructions for a single block (in different branches),
       # so it is difficult te reconstruct.
       # this heuristic is the best we can do for now.
-      # TODO: this should be an if not a while? verify pre and post condition.
+      # TODO: should this be an if instead of a while? verify pre and post condition.
       o, d = blocks[-1]
       assert d >= off
       if d > off: break
@@ -395,9 +395,10 @@ def crawl_code_insts(path, code, coverage, dbg):
       add_edge(coverage, line, cov_idx, prev_off, off, code)
     if op == SETUP_EXCEPT:
       exc_dst = inst.argval
-      # enter the exception handler from an unknown exception source.
-      # this makes matching difficult because while we can trace raises with src=OFF_RAISED,
-      # reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
+      # Enter the exception handler from an unknown exception source.
+      # This makes matching harder because while we can trace raises with src=OFF_RAISED,
+      # eraises do not get traced and so they have src offset of the END_FINALLY that reraises.
+      # The solution is to use reduce_exc_edges().
       find_traceable_edges(OFF_RAISED, OFF_RAISED, exc_dst, cov_idx)
     elif op == BREAK_LOOP:
       for block_op, dst in reversed(stack):
@@ -406,13 +407,18 @@ def crawl_code_insts(path, code, coverage, dbg):
           return
       else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
     elif op == END_FINALLY:
-      # The runtime semantics of END_FINALLY are very complicated.
-      # We make some major assumptions about the static semantics of block unwinding here.
+      # The runtime semantics of END_FINALLY are complicated.
+      # END_FINALLY can either reraise an exception, or step to the next instruction.
+      # or in two runtime cases continue execution to the next instruction:
+      # * a `with` __exit__ might return True, silencing an exception.
+      #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
+      # * TOS is None.
+      #   * Never None for an exception compare, which always returns True/False.
+      #   * Beyond that, hard to say.
+      #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
       for block_op, block_dst in reversed(stack):
-        if block_op == SETUP_FINALLY:
-          # If SETUP_FINALLY block is found, create an edge only to dst.
-          # Otherwise, fall through to emit edge to nxt.
-          # TODO: verify that instances of this instruction can never do both.
+        if block_op == SETUP_FINALLY: # create an edge to dst.
+          # Can also fall through to emit edge to nxt.
           find_traceable_edges(line, off, block_dst, cov_idx)
           return
 
