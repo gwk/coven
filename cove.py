@@ -499,13 +499,15 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   relaxed_lines = set() # line indices that are not perfectly covered but meet the relaxed requirement.
   not_cov_lines = set() # line indices that are not well covered.
   impossible_lines = set()
-  for line, (required, optional, traced) in coverage.items():
+
+  for line, (required, optional_raw, traced_raw) in coverage.items():
+    optional = optional_raw - required # might have overlap?
     possible = required | optional
-    assert possible # otherwise this item should never have been created.
+    traced = reduce_exc_edges(traced_raw, possible)
     unexpected = traced - possible
-    if traced >= required and not unexpected:
+    if traced == possible:
       covered_lines.add(line)
-    elif has_relaxed_coverage(possible, required, optional, traced, unexpected):
+    elif traced >= required and not unexpected:
       relaxed_lines.add(line)
     else:
       not_cov_lines.add(line)
@@ -591,21 +593,14 @@ def report_path(target, path, coverage, totals, show_all, dbg):
   stats.describe(label)
 
 
-def has_relaxed_coverage(possible, required, optional, traced, unexpected):
-  '''
-  When an exception match fails, it can jump to an END_FINALLY that rethrows the exception.
-  This will create a traced edge from the END_FINALLY to the SETUP_EXCEPT dst,
-  whereas the static analysis has emitted (OFF_RAISED, dst).
-  '''
-  raise_dsts = set()
-  for edge in required:
-    if edge in traced: continue
-    src, dst, _ = edge
-    if src != OFF_RAISED: return False
-    raise_dsts.add(dst)
-  for src, dst, _ in unexpected:
-    if dst not in raise_dsts: return False
-  return True
+def reduce_exc_edges(traced, possible):
+  raise_dsts = { dst for src, dst, _ in possible if src == OFF_RAISED }
+  def reduce_edge(edge):
+    src, dst, code = edge
+    if edge not in possible and dst in raise_dsts:
+      return (OFF_RAISED, dst, code)
+    return edge
+  return { reduce_edge(edge) for edge in traced }
 
 
 def path_rel_to_current_or_abs(path: str) -> str:
@@ -770,7 +765,6 @@ pop_block_opcodes = {
 OFF_BEGIN = -1
 OFF_RETURN = -2
 OFF_RAISED = -3
-OFF_FINALLY = -4
 
 RST = '\x1b[0m'
 TXT_B = '\x1b[34m'

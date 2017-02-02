@@ -1,0 +1,14 @@
+cove report:
+
+__main__: test/exc-TE_{:d}.py:
+[30m   3 [0m  from exc import *[0m
+[30m   4 [37m  [0m
+[30m   5 [0m  def top(arg):[0m
+[30m   6 [0m    try: try_(arg)[0m
+[30m   7 [31m!   except E1: exc1()[0m
+[30m   8 [37m  [0m
+[30m   9 [31m% for a in argv[1]:[0m
+[30m  10 [0m    try: top(int(a))[0m
+[30m  11 [31m!   except: pass[0m
+
+__main__: test/exc-TE_{:d}.py: 11 lines; [37m3 trivial[0m; 8 traceable; 5 covered; 0 relaxed; 0 ignored; 0 ignored but covered; [31m3 not covered[0m.

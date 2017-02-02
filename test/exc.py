@@ -1,30 +1,17 @@
+# exc-* test helper module.
 
-from sys import argv
-
-
-def top(arg):
-  try:
-    try_(arg)
-  except ValueError:
-    except_ValueError()
-  except Exception:
-    except_Exception()
-  else:
-    else_()
-  finally:
-    finally_()
-
+class E1(Exception): pass
+class E2(Exception): pass
+class E3(Exception): pass
 
 def try_(arg):
-  if arg == 1:
-    raise ValueError(arg)
-  if arg == 2:
-    raise Exception(arg)
+  if arg == 1: raise E1
+  if arg == 2: raise E2
+  if arg == 3: raise E3
 
+def exc1(): pass
+def exc2(): pass
+def exc3(): pass
 
-def except_ValueError(): pass
-def except_Exception(): pass
-def else_(): pass
-def finally_(): pass
-
-for a in argv[1]: top(int(a))
+def fin1(): pass
+def fin2(): pass

@@ -1,3 +1,0 @@
-cove report:
-
-__main__: test/te-telf-{}.py: 30 lines; [37m10 trivial[0m; 20 traceable; 19 covered; [32m1 relaxed[0m; 0 ignored; 0 ignored but covered; 0 not covered.
