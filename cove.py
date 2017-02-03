@@ -250,7 +250,7 @@ def report(target_paths, trace_sets, args):
       coverage = calculate_coverage(path=path, traces=path_traces[path], dbg=args.dbg)
       report_path(target=target, path=path, coverage=coverage, totals=totals, args=args)
   if len(target_paths) > 1:
-    totals.describe('TOTAL', True if args.colors else '')
+    totals.describe('TOTAL', True if args.color else '')
 
 
 def gen_path_traces(trace_sets):
