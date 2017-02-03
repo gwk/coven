@@ -171,7 +171,6 @@ def install_trace(targets, dbg):
         prev_line = OFF_RETURN
         prev_off  = OFF_RETURN
       elif event == 'exception':
-        assert prev_off == off
         prev_line = OFF_RAISED
         prev_off  = OFF_RAISED
       else: raise ValueError(event)
