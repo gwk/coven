@@ -18,9 +18,6 @@ from sys import exc_info, settrace, stderr, stdout
 from types import CodeType
 
 
-use_inst_tracing = True
-
-
 def main():
   arg_parser = ArgumentParser(description='cove: code coverage harness.')
   arg_parser.add_argument('-targets', nargs='*', default=[])
@@ -185,11 +182,8 @@ def install_trace(targets, dbg):
 
     return cove_local_tracer # global tracer installs a new local tracer for every call.
 
-  if use_inst_tracing:
-    try: settrace(cove_global_tracer, 'instruction')
-    except TypeError: exit('cove error: sys.settrace does not support instruction tracing (private patch)')
-  else:
-    settrace(cove_global_tracer)
+  try: settrace(cove_global_tracer, 'instruction')
+  except TypeError: exit('cove error: sys.settrace does not support instruction tracing (private patch)')
 
   return traces
 
@@ -436,10 +430,9 @@ def crawl_code_insts(path, code, coverage, dbg_name):
       opt = '?' if cov_idx == COV_IDX_OPTIONAL else ''
       errSL(f'  edge: {prev_line:4}:{prev_off:4} -> {line:4}:{off:4}  {opt}')
 
-    if use_inst_tracing or starts_line or (off < prev_off) or (op in traced_opcodes):
-      # The edge might already exist, generated from the same prev_off but different prev_line.
-      # If we abandon lnotabs line numbering then we can remove the prev_line parameter and assert that the edge is new.
-      add_edge(coverage, line, cov_idx, prev_off, off, code)
+    add_edge(coverage, line, cov_idx, prev_off, off, code)
+    #^ The edge might already exist, generated from the same prev_off but different prev_line.
+    #^ If we abandon lnotabs line numbering then we can remove the prev_line parameter and assert that the edge is new.
 
     if op == SETUP_EXCEPT:
       # Enter the exception handler from an unknown exception source.
