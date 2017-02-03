@@ -171,7 +171,6 @@ def install_trace(targets, dbg):
         prev_line = line
         prev_off = off
       elif event == 'return':
-        assert prev_off == off or prev_off == OFF_RAISED
         prev_line = OFF_RETURN
         prev_off  = OFF_RETURN
       elif event == 'exception':
@@ -368,6 +367,8 @@ def crawl_code_insts(path, code, coverage, dbg_name):
     prevs[off] = prev
 
     if prev.opcode == YIELD_VALUE:
+      entry_offs.append(off)
+    if op == YIELD_FROM:
       entry_offs.append(off)
 
     # calculate if this instruction is doing an exception match,
@@ -884,12 +885,11 @@ stop_opcodes = {
   JUMP_FORWARD,
   RAISE_VARARGS,
   RETURN_VALUE,
-  YIELD_FROM, # ??
-  YIELD_VALUE, # ??
+  YIELD_VALUE,
 }
 
-# the following opcodes always trigger tracing due to 'return' trace.
-traced_opcodes = {
+# the following opcodes trigger 'return' events.
+return_opcodes = {
   RETURN_VALUE,
   YIELD_FROM,
   YIELD_VALUE,
