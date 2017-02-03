@@ -1,0 +1,6 @@
+----------------
+Coverage Report:
+
+__main__: test/extended_arg.py:
+
+__main__: test/extended_arg.py: 10 lines; 3 trivial; 7 traceable; 6 covered; 0 relaxed; 1 ignored; 0 ignored but covered; 0 not covered.

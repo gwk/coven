@@ -9,7 +9,7 @@ import os
 import os.path
 import re
 from collections import defaultdict
-from dis import findlinestarts, get_instructions, hasjabs, hasjrel, opname, opmap
+from dis import Instruction, findlinestarts, get_instructions, hasjabs, hasjrel, opname, opmap
 from argparse import ArgumentParser
 from inspect import getmodule
 from os.path import abspath as abs_path, join as path_join, normpath as normalize_path
@@ -115,6 +115,12 @@ def scrub_traceback(tbe):
   # while also covering both the installed entry_point and the local dev cases.
   del stack[0]
   while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove cove runpy.run_path frames.
+
+
+# Fake instruction/line offsets.
+OFF_BEGIN = -1
+OFF_RETURN = -2
+OFF_RAISED = -3
 
 
 def install_trace(targets, dbg):
@@ -319,45 +325,70 @@ def sub_codes(code):
   return [c for c in code.co_consts if isinstance(c, CodeType)]
 
 
+def enhance_inst(inst, off, line):
+  inst.off = off
+  inst.line = line
+  inst.is_req = False
+  inst.is_exc_match = False
+  inst.is_exc_jmp_src = False
+  inst.is_exc_jmp_dst = False
+
+
+_begin_inst = Instruction(opname='_START', opcode=-1, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=OFF_BEGIN, is_jump_target=False)
+enhance_inst(_begin_inst, off=OFF_BEGIN, line=OFF_BEGIN)
+
 def crawl_code_insts(path, code, coverage, dbg_name):
   name = code.co_name
   dbg = (name == dbg_name)
   if dbg: errSL(f'\ncrawl code: {path}:{name}')
 
-  insts = list(get_instructions(code))
-  lines = []
-  # track jumps predicated on a preceding COMPARE_OP performing 'exception match'.
-  # the jump dst is treated as optional, because all possible exceptions cannot be reasonably covered.
-  req_offs = set()
-  exc_match_jump_srcs = set()
-  exc_match_jump_dsts = set()
-  entry_offs = [0]
+  insts = {} # offsets (accounting for EXTENDED_ARG) to Instructions.
+  nexts = {} # to prev Instruction.
+  prevs = {} # to next Instruction.
+  #^ track jumps predicated on a preceding COMPARE_OP performing 'exception match'.
+  #^ the jump dst is treated as optional, because all possible exceptions cannot be reasonably covered.
+  entry_offs = [0] # crawl starting points.
+
+  # Step 1: scan over instructions and assemble structure.
+
   blocks = [] # (op, dst) pairs.
-  stacks = []
-  is_prev_exc_match = False
-
-  for inst in insts:
+  prev = _begin_inst
+  exc_jmp_dsts = set()
+  ext_off = None # address of first EXTENDED_ARG.
+  #^ EXTENDED_ARG (or several) can precede an actual instruction.
+  #^ In this case, we use the first offset but the final instruction.
+  for inst in get_instructions(code):
     op = inst.opcode
-    off = inst.offset
-    index = off // 2
-    lines.append(inst.starts_line or lines[-1])
+    if op == EXTENDED_ARG:
+      if ext_off is None:
+        ext_off = inst.offset
+      continue
+    if ext_off:
+      off = ext_off # change the offset to represent "logical offset".
+      ext_off = None
+    else:
+      off = inst.offset
+    enhance_inst(inst, off=off, line=(inst.starts_line or prev.line))
+    insts[off] = inst
+    nexts[prev.off] = inst
+    prevs[off] = prev
 
-    if op == YIELD_VALUE:
-      entry_offs.append(off + 2)
+    if prev.opcode == YIELD_VALUE:
+      entry_offs.append(off)
 
     # calculate if this instruction is doing an exception match,
     # which will lead to a jump that results in the exception getting reraised.
     if op == COMPARE_OP and inst.argrepr == 'exception match':
-      assert not is_prev_exc_match
-      is_prev_exc_match = True
-      req_offs.add(off)
-    elif is_prev_exc_match:
-      if op == POP_JUMP_IF_FALSE:
-        exc_match_jump_srcs.add(off)
-        exc_match_jump_dsts.add(inst.argval)
-        is_prev_exc_match = False
-      else:
-        assert op == EXTENDED_ARG # the compare op may have extended args.
+      inst.is_exc_match = True
+      inst.is_req = True
+    if prev.is_exc_match:
+      assert op == POP_JUMP_IF_FALSE
+      inst.is_exc_jmp_src = True
+      exc_jmp_dsts.add(inst.argval)
+    if off in exc_jmp_dsts:
+      inst.is_exc_jmp_dst = True
+
+    prev = inst # update; no longer valid for remainder of loop body.
 
     while blocks:
       # We assume here that the runtime lifespan of a block is equivalent to its static span.
@@ -376,39 +407,30 @@ def crawl_code_insts(path, code, coverage, dbg_name):
       dst = inst.argval
       assert all(dst < d for _, d in blocks)
       blocks.append((op, dst))
-    stack = tuple(blocks)
-    stacks.append(stack)
+    inst.stack = tuple(blocks)
 
-    if dbg:
-      exc_match = 'M' if off in exc_match_jump_srcs or off in exc_match_jump_dsts else ' '
-      letters = ''.join(push_abbrs[op] for op, _ in stack)
-      err_inst(inst, exc_match, letters)
+    if dbg: err_inst(inst)
 
   visited = set()
   def find_traceable_edges(prev_line, prev_off, off, cov_idx):
-    if off in req_offs:
+    inst = insts[off]
+    assert inst.off == off
+    if inst.is_req:
       cov_idx = COV_IDX_REQUIRED
     is_opt = (cov_idx == COV_IDX_OPTIONAL)
     args = (prev_line, prev_off, off, cov_idx)
     if args in visited or (is_opt and (prev_line, prev_off, off, COV_IDX_REQUIRED) in visited): return
     visited.add(args)
-    index = off // 2 # this is incorrect prior to python3.6.
-    inst = insts[index]
-    stack = stacks[index]
-    assert inst.offset == off
-    assert off or not inst.is_jump_target # this would make boolean tests on jump dsts unsafe.
-    op = inst.opcode
+    assert off or not inst.is_jump_target # otherwise boolean tests on jump dsts are unsafe.
 
+    op = inst.opcode
     starts_line = inst.starts_line
-    # note: our interpretation of the line number tricks described in lnotabs_notes.txt.
-    if starts_line:
-      line = starts_line
-    elif off < prev_off:
-      line = lines[index]
-    elif prev_line < 0: # this is not an lnotabs rule, but necessary for exception and yield resume edges.
-      line = lines[index]
+    if starts_line or off < prev_off or prev_line < 0:
+      #^ Our interpretation of the line number tricks described in lnotabs_notes.txt.
+      #^ Note: the last clause is not an lnotabs rule, but necessary for exception and yield resume edges.
+      line = inst.line
     else:
-      line = prev_line
+      line = prev_line # jumped forward to an instruction that is not a line start, so display as prev line.
 
     if dbg:
       opt = '?' if cov_idx == COV_IDX_OPTIONAL else ''
@@ -426,10 +448,11 @@ def crawl_code_insts(path, code, coverage, dbg_name):
       # The solution is to use reduce_exc_edges().
       find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, cov_idx)
     elif op == SETUP_FINALLY:
-      if is_SETUP_FINALLY_exc_pad(insts, index, path, name): # omit outer exception pad for code that looks like TEF.
+      if is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, name):
+        # omit outer exception edge for code that looks like TEF, because inner EXCEPT block will catch it.
         find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, cov_idx)
     elif op == BREAK_LOOP:
-      for block_op, dst in reversed(stack):
+      for block_op, dst in reversed(inst.stack):
         if block_op == SETUP_LOOP:
           find_traceable_edges(line, off, dst, cov_idx)
           return
@@ -444,12 +467,12 @@ def crawl_code_insts(path, code, coverage, dbg_name):
       #   * Never None for an exception compare, which always returns True/False.
       #   * Beyond that, hard to say.
       #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
-      for block_op, block_dst in reversed(stack):
+      for block_op, block_dst in reversed(inst.stack):
         if block_op == SETUP_FINALLY: # create an edge to next handler dst.
           find_traceable_edges(line, off, block_dst, cov_idx)
           return # TODO: it may be that this case can also step to next.
       # TODO: handle WITH_CLEANUP_FINISH case.
-      if off in exc_match_jump_dsts: # can never step to next.
+      if inst.is_exc_jmp_dst: # can never step to next.
         return
 
     # note: we currently use recursion to explore the control flow graph.
@@ -458,24 +481,24 @@ def crawl_code_insts(path, code, coverage, dbg_name):
     # * turn the second call into a fake tail call using a while loop around this whole function body;
     # * use visit_nodes, which would break ordering of dbg output.
     if op not in stop_opcodes: # normal interpreter step forward.
-      nxt = off + 2
-      #^ as of python3.6, all opcodes take 2 bytes.
-      # previously the next instruction was off + (1 if op < HAVE_ARGUMENT else 3).
-      find_traceable_edges(line, off, nxt, cov_idx)
+      find_traceable_edges(line, off, nexts[off].off, cov_idx)
     if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
       # TODO: assert on the nature of this exception match jump dst? always END_FINALLY?
-      idx = COV_IDX_OPTIONAL if (off in exc_match_jump_srcs) else cov_idx
+      idx = COV_IDX_OPTIONAL if (inst.is_exc_jmp_src) else cov_idx
       find_traceable_edges(line, off, jmp, idx)
 
   for off in entry_offs:
     find_traceable_edges(-1, -1, off, COV_IDX_REQUIRED)
 
 
-def err_inst(inst, exc_match, stack):
+def err_inst(inst):
   op = inst.opcode
   line = inst.starts_line or ''
   off = inst.offset
+  exc_match = ' '
+  if inst.is_exc_jmp_src: exc_match = '^' # jump.
+  if inst.is_exc_jmp_dst: exc_match = '_' # land.
   dst = ('DST' if inst.is_jump_target else '   ')
   stop = 'stop' if op in stop_opcodes else '    '
   if op in jump_opcodes:
@@ -483,11 +506,12 @@ def err_inst(inst, exc_match, stack):
   elif op in push_block_opcodes:
     target = f'push {inst.argval:4}'
   else: target = ''
+  stack = ''.join(push_abbrs[op] for op, _ in inst.stack)
   arg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
-  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4} {exc_match} {stop} {target:9}  {stack:8}  {inst.opname:{onl}} {arg}')
+  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4} {exc_match} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
 
 
-def is_SETUP_FINALLY_exc_pad(insts, index, path, code_name):
+def is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, code_name):
   '''
   Some SETUP_FINALLY imply an expected exception edge, but others do not.
 
@@ -515,40 +539,50 @@ def is_SETUP_FINALLY_exc_pad(insts, index, path, code_name):
   It generates finally code to delete <name>.
   This instruction sequence appears easy to recognize, but is again just a heuristic that may fail.
   '''
-  inst = insts[index]
   assert inst.opcode == SETUP_FINALLY
-  dst_index = inst.argval // 2
-  dst_inst = insts[dst_index]
-  next_inst = insts[index + 1] # safe, SETUP_FINALLY is never the last instruction.
+  dst_off = inst.argval
+  next_inst = nexts[inst.off]
   if next_inst.opcode == SETUP_EXCEPT:
     # looks like TEF, but might be TF-TE.
-    # this heuristic is likely to fail, but will get us through the tests at least.
-    exc_dst_inst = insts[next_inst.argval // 2]
+    # TODO: this heuristic may need work!
+    # Inspect the destination of nested SETUP_EXCEPT.
+    exc_dst_inst = insts[next_inst.argval]
     op = exc_dst_inst.opcode
     if op == DUP_TOP: return False # TEF.
     if op == POP_TOP: return True # TF-TE.
     errSL(f'cove WARNING: is_SETUP_FINALLY_exc_pad: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
     return False # if the code does actually raise it will be flagged as impossible.
 
-  # `except _ as <name>` heuristic.
-  if match_insts(insts, dst_index - 3, (
-    POP_BLOCK,
-    POP_EXCEPT,
-    (LOAD_CONST, None),
-    (LOAD_CONST, None), # this is at dst_index.
-    STORE_FAST,
-    DELETE_FAST,
-    END_FINALLY)):
+  # `except _ as <name>` heuristic looks for a particular cleanup sequence.
+  dst_inst = insts[dst_off]
+  if match_insts(dst_inst, prevs, nexts,
+    exp_prev=(
+      POP_BLOCK,
+      POP_EXCEPT,
+      (LOAD_CONST, None)),
+    expected=(
+      (LOAD_CONST, None), # inst.
+      STORE_FAST,
+      DELETE_FAST,
+      END_FINALLY)):
     return False # not an exception that would be reasonably covered.
 
   return True
 
 
-def match_insts(insts, start, expected):
-  if start < 0: return False
-  end = start + len(expected)
-  if len(insts) < end: return False
-  return all(map(match_inst, insts[start:end], expected))
+def match_insts(inst, prevs, nexts, exp_prev, expected):
+  p = prevs[inst.off]
+  for exp in reversed(exp_prev):
+    if not match_inst(p, exp): return False
+    try: p = prevs[p.off]
+    except KeyError: return False
+  n = inst
+  for exp in expected:
+    if not match_inst(n, exp): return False
+    try: n = nexts[n.off]
+    except KeyError: return False
+  return True
+
 
 def match_inst(inst, exp):
   if isinstance(exp, tuple):
@@ -799,7 +833,7 @@ def errSL(*items): print(*items, file=stderr)
 
 # Opcode information.
 
-onl = max(len(name) for name in opname)
+onlen = max(len(name) for name in opname)
 
 # absolute jump codes.
 #errSL('JMP ABS:', *sorted(opname[op] for op in hasjabs))
@@ -891,10 +925,6 @@ pop_block_opcodes = {
   POP_BLOCK,
   POP_EXCEPT,
 }
-
-OFF_BEGIN = -1
-OFF_RETURN = -2
-OFF_RAISED = -3
 
 RST = '\x1b[0m'
 TXT_B = '\x1b[34m'
