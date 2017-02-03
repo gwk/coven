@@ -24,7 +24,7 @@ use_inst_tracing = True
 def main():
   arg_parser = ArgumentParser(description='cove: code coverage harness.')
   arg_parser.add_argument('-targets', nargs='*', default=[])
-  arg_parser.add_argument('-dbg', action='store_true')
+  arg_parser.add_argument('-dbg')
   arg_parser.add_argument('-show-all', action='store_true')
   arg_parser.add_argument('-color-on', dest='color', action='store_true', default=stdout.isatty())
   arg_parser.add_argument('-color-off', dest='color', action='store_false')
@@ -281,11 +281,12 @@ def calculate_coverage(path, traces, dbg):
   coverage = {} # Do not use defaultdict because reporting logic depends on KeyError.
   # generate all possible traces.
   for code in all_codes:
-    crawl_code_insts(path=path, code=code, coverage=coverage, dbg=dbg)
+    crawl_code_insts(path=path, code=code, coverage=coverage, dbg_name=dbg)
   # then fill in the traced sets.
   for trace in traces:
     pl, po, l, o, c = trace
-    if dbg: errSL(f'traced: {pl:4}:{po:4} -> {l:4}:{o:4}  {c.co_name}')
+    if dbg == c.co_name:
+      errSL(f'traced: {pl:4}:{po:4} -> {l:4}:{o:4}  {c.co_name}')
     add_edge(coverage, l, COV_IDX_TRACED, po, o, c)
   return coverage
 
@@ -318,8 +319,9 @@ def sub_codes(code):
   return [c for c in code.co_consts if isinstance(c, CodeType)]
 
 
-def crawl_code_insts(path, code, coverage, dbg):
+def crawl_code_insts(path, code, coverage, dbg_name):
   name = code.co_name
+  dbg = (name == dbg_name)
   if dbg: errSL(f'\ncrawl code: {path}:{name}')
 
   insts = list(get_instructions(code))
