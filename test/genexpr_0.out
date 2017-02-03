@@ -1,0 +1,12 @@
+False
+----------------
+Coverage Report:
+
+__main__: test/genexpr_{}.py:
+   1   from sys import argv
+   2
+   3   def not_all(args):
+   4 %   return all(int(a) for a in args)
+   5
+
+__main__: test/genexpr_{}.py: 6 lines; 2 trivial; 4 traceable; 3 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.

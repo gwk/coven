@@ -1,0 +1,13 @@
+0 1
+----------------
+Coverage Report:
+
+__main__: test/yield_{}.py:
+   1   from sys import argv
+   2
+   3   def yield_(stop):
+   4     for i in range(2):
+   5 %     if i == stop: break
+   6       yield i
+
+__main__: test/yield_{}.py: 11 lines; 3 trivial; 8 traceable; 7 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.

@@ -144,6 +144,7 @@ def install_trace(targets, dbg):
     if g_event != 'call': return None
     code = g_frame.f_code
     path = code.co_filename
+    name = code.co_name
     try:
       is_target = file_name_filter[path]
     except KeyError:
@@ -328,6 +329,7 @@ def crawl_code_insts(path, code, coverage, dbg):
   req_offs = set()
   exc_match_jump_srcs = set()
   exc_match_jump_dsts = set()
+  entry_offs = [0]
   blocks = [] # (op, dst) pairs.
   stacks = []
   is_prev_exc_match = False
@@ -337,6 +339,9 @@ def crawl_code_insts(path, code, coverage, dbg):
     off = inst.offset
     index = off // 2
     lines.append(inst.starts_line or lines[-1])
+
+    if op == YIELD_VALUE:
+      entry_offs.append(off + 2)
 
     # calculate if this instruction is doing an exception match,
     # which will lead to a jump that results in the exception getting reraised.
@@ -398,8 +403,7 @@ def crawl_code_insts(path, code, coverage, dbg):
       line = starts_line
     elif off < prev_off:
       line = lines[index]
-    elif prev_line < 0: # this is not an lnotabs rule, but necessary for exception edges.
-      assert prev_line == OFF_RAISED
+    elif prev_line < 0: # this is not an lnotabs rule, but necessary for exception and yield resume edges.
       line = lines[index]
     else:
       line = prev_line
@@ -462,7 +466,8 @@ def crawl_code_insts(path, code, coverage, dbg):
       idx = COV_IDX_OPTIONAL if (off in exc_match_jump_srcs) else cov_idx
       find_traceable_edges(line, off, jmp, idx)
 
-  find_traceable_edges(-1, -1, 0, COV_IDX_REQUIRED)
+  for off in entry_offs:
+    find_traceable_edges(-1, -1, off, COV_IDX_REQUIRED)
 
 
 def err_inst(inst, exc_match, stack):
