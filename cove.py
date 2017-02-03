@@ -734,7 +734,13 @@ def path_comps(path: str):
   return [comp or '/' for comp in np.split(os.sep)]
 
 
-indent_and_ignored_re = re.compile(r'^(\s*)(assert\b|.*#no-cov!$)?')
+indent_and_ignored_re = re.compile(r'''(?x:
+^ (\s*) # capture leading space.
+( assert\b        # ignore assertions.
+| .* \#no-cov! $  # ignore directive.
+| if \s+ __name__ \s* == \s* ['"]__main__['"] \s* :
+)?
+)''')
 
 def calc_ignored_lines(line_texts):
   ignored = set()
