@@ -81,7 +81,7 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   try:
     run_path(cmd_head, run_name='__main__')
   except FileNotFoundError as e:
-    exit('cove error: could not find command to run: {!r}'.format(cmd_head))
+    exit(f'cove error: could not find command to run: {cmd_head!r}')
   except SystemExit as e:
     exit_code = e.code
   except BaseException:
@@ -138,7 +138,7 @@ def install_trace(targets, dbg):
     # example: .../python3.5/collections/abc.py != .../python3.5/_collections_abc.py
     # thus the following check sometimes fires, but it seems acceptable.
     #if dbg and module.__file__ != code.co_filename:
-    #  errSL('  note: module file: {} != code file: {}'.format(module.__file__, code.co_filename))
+    #  errSL(f'  note: module file: {module.__file__} != code file: {code.co_filename}')
     is_target = (module.__name__ in targets)
     return is_target
 
@@ -205,7 +205,7 @@ def gen_target_paths(targets, cmd_head, dbg):
       else: target_paths[target] = {module.__file__}
   if dbg:
     for t, p in sorted(target_paths.items()):
-      errSL('gen_target_paths: {} -> {}'.format(t, p))
+      errSL(f'gen_target_paths: {t} -> {p}')
   return target_paths
 
 
@@ -226,7 +226,7 @@ def coalesce(trace_paths, arg_targets, args):
   for trace_path in trace_paths:
     try: f = open(trace_path, 'rb')
     except FileNotFoundError:
-      exit('cove error: trace file not found: {}'.format(trace_path))
+      exit(f'cove error: trace file not found: {trace_path}')
     with f: data = marshal.load(f)
     target_paths = data['target_paths']
     code_edges = data['code_edges']
@@ -244,7 +244,7 @@ def report(target_paths, code_edges, args):
   totals = Stats()
   for target, paths in sorted(target_paths.items()):
     if not paths:
-      print('\n{}: NEVER IMPORTED.'.format(target))
+      print(f'\n{target}: NEVER IMPORTED.')
       continue
     for path in sorted(paths):
       coverage = calculate_coverage(path=path, code_edges=path_code_edges[path], dbg=args.dbg)
@@ -509,7 +509,7 @@ def err_inst(inst):
     target = f'push {inst.argval:4}'
   else: target = ''
   stack = ''.join(push_abbrs[op] for op, _ in inst.stack)
-  arg = 'to {} (abs)'.format(inst.arg) if inst.opcode in hasjabs else inst.argrepr
+  arg = f'to {inst.arg if inst.opcode in hasjabs else inst.argrepr} (abs)'
   errSL(f'  line:{line:>4}  off:{off:>4} {dst:4} {exc_match} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
 
 
