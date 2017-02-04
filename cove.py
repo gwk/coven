@@ -165,9 +165,9 @@ def install_trace(targets, dbg):
       nonlocal prev_line, prev_off
       line = frame.f_lineno
       off = frame.f_lasti
-      #errSL('LTRACE:', event, prev_line, prev_off, line, off, code.co_name)
+      #errSL(f'LTRACE: {event} {prev_off} -> {off} ({prev_line} -> {line}) {code.co_name}')
       if event in ('instruction', 'line'):
-        edges.add((prev_line, prev_off, line, off))
+        edges.add((prev_off, off, prev_line, line))
         prev_line = line
         prev_off = off
       elif event == 'return':
@@ -278,9 +278,9 @@ def calculate_coverage(path, code_edges, dbg):
   coverage = defaultdict(lambda: (set(), set(), set()))
   def add_edges(edges, code, cov_idx):
     for edge in edges:
-      line = edge[2]
+      line = edge[3]
       assert line >= 0
-      coverage[line][cov_idx].add((edge[1], edge[3], code))
+      coverage[line][cov_idx].add((edge[0], edge[1], code))
 
   for code in all_codes:
     traced = code_edges.get(code, {})
@@ -308,11 +308,11 @@ def reduce_edges(req, opt, traced):
   '''
   opt.difference_update(req) # might have overlap?
   possible = req | opt
-  raise_dsts = { dst for _, src, _, dst in possible if src == OFF_RAISED }
+  raise_dsts = { edge[1] for edge in possible if edge[0] == OFF_RAISED }
   def reduce_edge(edge):
-    _, src, dst_line, dst = edge
+    src, dst, _, dst_line = edge
     if edge not in possible and dst in raise_dsts:
-      return (OFF_RAISED, OFF_RAISED, dst_line, dst)
+      return (OFF_RAISED, dst, OFF_RAISED, dst_line)
     return edge
   traced_ = [reduce_edge(edge) for edge in traced]
   traced.clear()
@@ -452,7 +452,7 @@ def crawl_code_insts(path, code, dbg_name):
     else:
       line = prev_line # jumped forward to an instruction that is not a line start, so display as prev line.
 
-    edge = (prev_line, prev_off, line, off)
+    edge = (prev_off, off, prev_line, line)
     if dbg: err_edge(f'   {"req" if is_req else "opt"}', edge, code)
     (req if is_req else opt).add(edge)
 
@@ -822,8 +822,9 @@ def line_ranges(iterable, before, after, terminal):
 
 
 def fmt_edge(edge, code):
-  pl, po, l, o = edge
-  return f'{pl:4}:{po:4} -> {l:4}{o:4}  {code.co_name}'
+  src, dst, sl, dl = edge
+  line = sl if (sl == dl) else f'{sl:4} -> {dl:4}'
+  return f'off: {src:4} -> {dst:4}    line: {line:>12}  {code.co_name}'
 
 
 def errSL(*items): print(*items, file=stderr)
@@ -835,7 +836,7 @@ def err_edge(label, edge, code, *tail):
 
 def err_cov_set(label, cov_set):
   for src, dst, code in sorted(cov_set):
-    errSL(f'{label}: {src:4} -> {dst:4}  {code.co_name}')
+    errSL(f'{label} {src:4} -> {dst:4}  {code.co_name}')
 
 
 # Opcode information.
