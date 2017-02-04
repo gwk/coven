@@ -1,0 +1,4 @@
+----------------
+Coverage Report:
+
+__main__: test/for-gen.py: 40 lines; 16 trivial; 24 traceable; 24 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 0 not covered.

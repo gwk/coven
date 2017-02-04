@@ -460,11 +460,13 @@ def crawl_code_insts(path, code, dbg_name):
       for block_op, dst in reversed(inst.stack):
         if block_op == SETUP_LOOP:
           find_traceable_edges(line, off, dst, is_req)
-          #find_traceable_edges(OFF_RAISED, OFF_RAISED, dst, is_req)
-          #^ We might get a normal edge when the loop ends, or an exception edge.
-          #^ Since reduce_edges converts normal edges to exception edges, just emit the latter.
           return
       else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
+    elif op == FOR_ITER:
+      find_traceable_edges(line, OFF_RAISED, inst.argval, is_req)
+      #^ We might get a normal edge when the loop ends, or an exception edge.
+      #^ Since reduce_edges can convert normal edges to exception edges, just emit the latter.
+      #^ Note: unlike other exception edges we specify prev_line.
     elif op == SETUP_EXCEPT:
       # Enter the exception handler from an unknown exception source.
       # This makes matching harder because while we can trace raises with src=OFF_RAISED,
@@ -880,6 +882,7 @@ YIELD_FROM            = opmap['YIELD_FROM']
 YIELD_VALUE           = opmap['YIELD_VALUE']
 
 # `hasjrel` includes the SETUP_* ops, which do not actually branch on execution.
+# FOR_ITER is also omitted because we handle it manually.
 jump_opcodes = {
   CONTINUE_LOOP,
   JUMP_ABSOLUTE,
@@ -887,7 +890,6 @@ jump_opcodes = {
   JUMP_IF_TRUE_OR_POP,
   POP_JUMP_IF_FALSE,
   POP_JUMP_IF_TRUE,
-  FOR_ITER,
   JUMP_FORWARD,
 }
 

@@ -1,0 +1,12 @@
+----------------
+Coverage Report:
+
+__main__: test/for_{}.py:
+   9
+  10     for i in range(arg):
+  11       for_()
+  12       if i:
+  13 !       break
+  14     else:
+
+__main__: test/for_{}.py: 22 lines; 10 trivial; 12 traceable; 11 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.
