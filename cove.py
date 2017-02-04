@@ -232,8 +232,8 @@ def coalesce(trace_paths, arg_targets, args):
     code_edges = data['code_edges']
     for target, paths in target_paths.items():
       if arg_targets and target not in arg_targets: continue
-    for code, edges in code_edges:
-      target_paths[code].update(edges)
+    for code, edges in code_edges.items():
+      all_code_edges[code].update(edges)
   report(target_paths, all_code_edges, args=args)
 
 
