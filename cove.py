@@ -467,6 +467,9 @@ def crawl_code_insts(path, code, coverage, dbg_name):
       for block_op, dst in reversed(inst.stack):
         if block_op == SETUP_LOOP:
           find_traceable_edges(line, off, dst, cov_idx)
+          #find_traceable_edges(OFF_RAISED, OFF_RAISED, dst, cov_idx)
+          #^ We might get a normal edge when the loop ends, or an exception edge.
+          #^ Since reduce_edges converts normal edges to exception edges, just emit the latter.
           return
       else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
     elif op == END_FINALLY:
