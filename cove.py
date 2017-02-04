@@ -835,7 +835,7 @@ def err_edge(label, edge, code, *tail):
 
 
 def err_cov_set(label, cov_set):
-  for src, dst, code in sorted(cov_set):
+  for src, dst, code in sorted(cov_set, key=lambda t: (t[2].co_name, t[0], t[1])):
     errSL(f'{label} {src:4} -> {dst:4}  {code.co_name}')
 
 
