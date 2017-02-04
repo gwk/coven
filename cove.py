@@ -287,6 +287,9 @@ def calculate_coverage(path, traces, dbg):
     if dbg == c.co_name:
       errSL(f'traced: {pl:4}:{po:4} -> {l:4}:{o:4}  {c.co_name}')
     add_edge(coverage, l, COV_IDX_TRACED, po, o, c)
+  # Process.
+  for line, record in coverage.items():
+    reduce_edges(line, record)
   return coverage
 
 
@@ -300,6 +303,21 @@ def add_edge(coverage, line, cov_idx, prev_off, off, code):
     t = (set(), set(), set())
     coverage[line] = t
   t[cov_idx].add((prev_off, off, code))
+
+
+def reduce_edges(line, record):
+  required, optional, traced = record
+  optional.difference_update(required) # might have overlap?
+  possible = required | optional
+  raise_dsts = { dst for src, dst, _ in possible if src == OFF_RAISED }
+  def reduce_edge(edge):
+    src, dst, code = edge
+    if edge not in possible and dst in raise_dsts:
+      return (OFF_RAISED, dst, code)
+    return edge
+  traced_ = [reduce_edge(edge) for edge in traced]
+  traced.clear()
+  traced.update(traced_)
 
 
 def visit_nodes(start_nodes, visitor):
@@ -635,10 +653,8 @@ def report_path(target, path, coverage, totals, args):
   not_cov_lines = set() # line indices that are not well covered.
   impossible_lines = set()
 
-  for line, (required, optional_raw, traced_raw) in coverage.items():
-    optional = optional_raw - required # might have overlap?
+  for line, (required, optional, traced) in coverage.items():
     possible = required | optional
-    traced = reduce_exc_edges(traced_raw, possible)
     unexpected = traced - possible
     if traced == possible:
       covered_lines.add(line)
@@ -734,16 +750,6 @@ def report_path(target, path, coverage, totals, args):
         err_traces(f'{TXT_D1}{line:4} {TXT_B1}=', possible & traced)
         err_traces(f'{TXT_D1}{line:4} {TXT_B1}+', traced - possible)
   stats.describe(label, c)
-
-
-def reduce_exc_edges(traced, possible):
-  raise_dsts = { dst for src, dst, _ in possible if src == OFF_RAISED }
-  def reduce_edge(edge):
-    src, dst, code = edge
-    if edge not in possible and dst in raise_dsts:
-      return (OFF_RAISED, dst, code)
-    return edge
-  return { reduce_edge(edge) for edge in traced }
 
 
 def path_rel_to_current_or_abs(path: str) -> str:
