@@ -277,7 +277,7 @@ def calculate_coverage(path, traces, dbg):
   traced_codes = (t[-1] for t in traces)
   all_codes = list(visit_nodes(start_nodes=traced_codes, visitor=sub_codes))
   if dbg: all_codes.sort(key=lambda code: code.co_name)
-  coverage = {} # Do not use defaultdict because reporting logic depends on KeyError.
+  coverage = defaultdict(lambda: (set(), set(), set()))
   # generate all possible traces.
   for code in all_codes:
     crawl_code_insts(path=path, code=code, coverage=coverage, dbg_name=dbg)
@@ -298,11 +298,7 @@ COV_IDX_REQUIRED, COV_IDX_OPTIONAL, COV_IDX_TRACED = range(3)
 
 def add_edge(coverage, line, cov_idx, prev_off, off, code):
   assert line >= 0
-  try: t = coverage[line]
-  except KeyError:
-    t = (set(), set(), set())
-    coverage[line] = t
-  t[cov_idx].add((prev_off, off, code))
+  coverage[line][cov_idx].add((prev_off, off, code))
 
 
 def reduce_edges(line, record):
@@ -714,10 +710,10 @@ def report_path(target, path, coverage, totals, args):
       color = RST1
       sym = ' '
       needs_dbg = False
-      try: required, optional, traced = coverage[line]
-      except KeyError: # trivial.
-          color = TXT_L1
+      if line not in coverage: # trivial.
+        color = TXT_L1
       else:
+        required, optional, traced = coverage[line]
         if line in covered_lines:
           if line in ign_cov_lines:
             color = TXT_Y1
