@@ -76,7 +76,7 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   sys.path = orig_path.copy()
   sys.path[0] = os.path.dirname(cmd[0]) # not sure if this is right in all cases.
   exit_code = 0
-  trace_set = install_trace(targets, dbg=args.dbg)
+  code_edges = install_trace(targets, dbg=args.dbg)
   #if dbg: errSL('cove untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()))
   try:
     run_path(cmd_head, run_name='__main__')
@@ -98,10 +98,10 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   sys.argv = orig_argv
   target_paths = gen_target_paths(targets, cmd_head, dbg=args.dbg)
   if output_path:
-    write_coverage(output_path=output_path, target_paths=target_paths, trace_set=trace_set)
-    exit(exit_code)
+    write_coverage(output_path=output_path, target_paths=target_paths, code_edges=code_edges)
+    exit(exit_code) # TODO: move out of if?
   else:
-    report(target_paths=target_paths, trace_sets=[trace_set], args=args)
+    report(target_paths=target_paths, code_edges=code_edges, args=args)
 
 
 def scrub_traceback(tbe):
@@ -123,7 +123,7 @@ OFF_RAISED = -3
 def install_trace(targets, dbg):
   'NOTE: this must be called before importing any module that we might wish to trace with cove.'
 
-  traces = set()
+  code_edges = defaultdict(set)
   file_name_filter = {}
 
   def is_code_path_targeted(code):
@@ -147,7 +147,6 @@ def install_trace(targets, dbg):
     if g_event != 'call': return None
     code = g_frame.f_code
     path = code.co_filename
-    name = code.co_name
     try:
       is_target = file_name_filter[path]
     except KeyError:
@@ -159,15 +158,16 @@ def install_trace(targets, dbg):
     # the local tracer lives only as long as execution continues within the code block.
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
+    edges = code_edges[code]
     prev_line = OFF_BEGIN
     prev_off  = OFF_BEGIN
     def cove_local_tracer(frame, event, arg):
       nonlocal prev_line, prev_off
       line = frame.f_lineno
       off = frame.f_lasti
-      #errSL('LTRACE:', event, prev_line, prev_off, line, off, frame.f_code.co_name)
+      #errSL('LTRACE:', event, prev_line, prev_off, line, off, code.co_name)
       if event in ('instruction', 'line'):
-        traces.add((prev_line, prev_off, frame.f_lineno, frame.f_lasti, frame.f_code))
+        edges.add((prev_line, prev_off, line, off))
         prev_line = line
         prev_off = off
       elif event == 'return':
@@ -184,7 +184,7 @@ def install_trace(targets, dbg):
   try: settrace(cove_global_tracer, 'instruction')
   except TypeError: exit('cove error: sys.settrace does not support instruction tracing (private patch)')
 
-  return traces
+  return code_edges
 
 
 def gen_target_paths(targets, cmd_head, dbg):
@@ -209,10 +209,10 @@ def gen_target_paths(targets, cmd_head, dbg):
   return target_paths
 
 
-def write_coverage(output_path, target_paths, trace_set):
+def write_coverage(output_path, target_paths, code_edges):
   data = {
     'target_paths': target_paths,
-    'trace_set': trace_set
+    'code_edges': dict(code_edges), # convert from defaultdict.
   }
   with open(output_path, 'wb') as f:
     marshal.dump(data, f)
@@ -222,94 +222,97 @@ def coalesce(trace_paths, arg_targets, args):
   target_paths = defaultdict(set)
   for arg_target in arg_targets:
     target_paths[arg_target]
-  trace_sets = []
+  all_code_edges = defaultdict(set)
   for trace_path in trace_paths:
-    try:
-      with open(trace_path, 'rb') as f:
-        data = marshal.load(f)
-        for target, paths in data['target_paths'].items():
-          if arg_targets and target not in arg_targets: continue
-          target_paths[target].update(paths)
-        trace_sets.append(data['trace_set'])
+    try: f = open(trace_path, 'rb')
     except FileNotFoundError:
       exit('cove error: trace file not found: {}'.format(trace_path))
-  report(target_paths, trace_sets, args=args)
+    with f: data = marshal.load(f)
+    target_paths = data['target_paths']
+    code_edges = data['code_edges']
+    for target, paths in target_paths.items():
+      if arg_targets and target not in arg_targets: continue
+    for code, edges in code_edges:
+      target_paths[code].update(edges)
+  report(target_paths, all_code_edges, args=args)
 
 
-def report(target_paths, trace_sets, args):
+def report(target_paths, code_edges, args):
   print('----------------')
   print('Coverage Report:')
-  path_traces = gen_path_traces(trace_sets)
+  path_code_edges = gen_path_code_edges(code_edges)
   totals = Stats()
   for target, paths in sorted(target_paths.items()):
     if not paths:
       print('\n{}: NEVER IMPORTED.'.format(target))
       continue
     for path in sorted(paths):
-      coverage = calculate_coverage(path=path, traces=path_traces[path], dbg=args.dbg)
+      coverage = calculate_coverage(path=path, code_edges=path_code_edges[path], dbg=args.dbg)
       report_path(target=target, path=path, coverage=coverage, totals=totals, args=args)
   if len(target_paths) > 1:
     totals.describe('\nTOTAL', True if args.color else '')
 
 
-def gen_path_traces(trace_sets):
-  'Group the traces by path.'
-  path_traces = defaultdict(list)
-  for trace_set in trace_sets:
-    for trace in trace_set:
-      code = trace[-1]
-      path_traces[code.co_filename].append(trace)
-  return path_traces
+def gen_path_code_edges(code_edges):
+  'Group the traced code_edges by path.'
+  d = defaultdict(dict)
+  for code, edges in code_edges.items():
+    d[code.co_filename][code] = edges
+  return d
 
 
-def calculate_coverage(path, traces, dbg):
+def calculate_coverage(path, code_edges, dbg):
   '''
   Calculate and return the coverage data structure,
-  Which maps line numbers to (required, optional, traced) triples of edge sets.
+  Which maps line numbers to (required, optional, traced) triples of sets of (src, dst, code).
   Each set contains Edge tuples.
   An Edge is (prev_offset, offset, code).
   A line is fully covered if (required <= traced <= required&optional).
   However there are additional relaxation semantics.
   '''
-  if dbg:
-    errSL('\ntrace: {}:'.format(path))
-    traces = sorted_traces(traces)
-  traced_codes = (t[-1] for t in traces)
-  all_codes = list(visit_nodes(start_nodes=traced_codes, visitor=sub_codes))
-  if dbg: all_codes.sort(key=lambda code: code.co_name)
+  if dbg: errSL(f'\calculate_coverage: {path}:')
+
+  all_codes = list(visit_nodes(start_nodes=code_edges, visitor=sub_codes))
+  if dbg: all_codes.sort(key=lambda c: c.co_name)
+
   coverage = defaultdict(lambda: (set(), set(), set()))
-  # generate all possible traces.
+  def add_edges(edges, code, cov_idx):
+    for edge in edges:
+      line = edge[2]
+      assert line >= 0
+      coverage[line][cov_idx].add((edge[1], edge[3], code))
+
   for code in all_codes:
-    crawl_code_insts(path=path, code=code, coverage=coverage, dbg_name=dbg)
-  # then fill in the traced sets.
-  for trace in traces:
-    pl, po, l, o, c = trace
-    if dbg == c.co_name:
-      errSL(f'traced: {pl:4}:{po:4} -> {l:4}:{o:4}  {c.co_name}')
-    add_edge(coverage, l, COV_IDX_TRACED, po, o, c)
-  # Process.
-  for line, record in coverage.items():
-    reduce_edges(line, record)
+    traced = code_edges.get(code, {})
+    # generate all possible traces.
+    # TODO: optimization: if not traces, do not bother analyzing code; instead just add fake required edges for each line start in code.
+    req, opt = crawl_code_insts(path=path, code=code, dbg_name=dbg)
+    if dbg == code.co_name:
+      for edge in sorted(traced): err_edge('traced', edge, code)
+    reduce_edges(req, opt, traced)
+    # assemble final coverage data by line.
+    add_edges(req,    code, COV_REQ)
+    add_edges(opt,    code, COV_OPT)
+    add_edges(traced, code, COV_TRACED)
+
   return coverage
 
 
-COV_IDX_REQUIRED, COV_IDX_OPTIONAL, COV_IDX_TRACED = range(3)
+COV_REQ, COV_OPT, COV_TRACED = range(3)
 
 
-def add_edge(coverage, line, cov_idx, prev_off, off, code):
-  assert line >= 0
-  coverage[line][cov_idx].add((prev_off, off, code))
-
-
-def reduce_edges(line, record):
-  required, optional, traced = record
-  optional.difference_update(required) # might have overlap?
-  possible = required | optional
-  raise_dsts = { dst for src, dst, _ in possible if src == OFF_RAISED }
+def reduce_edges(req, opt, traced):
+  '''
+  Transform the three sets as necessary so that later set comparison operations will calculate
+  per-line coverage appropriately.
+  '''
+  opt.difference_update(req) # might have overlap?
+  possible = req | opt
+  raise_dsts = { dst for _, src, _, dst in possible if src == OFF_RAISED }
   def reduce_edge(edge):
-    src, dst, code = edge
+    _, src, dst_line, dst = edge
     if edge not in possible and dst in raise_dsts:
-      return (OFF_RAISED, dst, code)
+      return (OFF_RAISED, OFF_RAISED, dst_line, dst)
     return edge
   traced_ = [reduce_edge(edge) for edge in traced]
   traced.clear()
@@ -333,6 +336,12 @@ def sub_codes(code):
 
 
 def enhance_inst(inst, off, line):
+  '''
+  Add some useful fields to Instruction:
+  * off: logical offset; the address of the first EXTENDED_ARG for instructions with preceding EXTENDED_ARG.
+  * line: the preceding start_line if this instruction does not have one.
+  The remaining fields are flags that are set in certain cases.
+  '''
   inst.off = off
   inst.line = line
   inst.is_req = False
@@ -344,7 +353,7 @@ def enhance_inst(inst, off, line):
 _begin_inst = Instruction(opname='_START', opcode=-1, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=OFF_BEGIN, is_jump_target=False)
 enhance_inst(_begin_inst, off=OFF_BEGIN, line=OFF_BEGIN)
 
-def crawl_code_insts(path, code, coverage, dbg_name):
+def crawl_code_insts(path, code, dbg_name):
   name = code.co_name
   dbg = (name == dbg_name)
   if dbg: errSL(f'\ncrawl code: {path}:{name}')
@@ -389,7 +398,7 @@ def crawl_code_insts(path, code, coverage, dbg_name):
     # which will lead to a jump that results in the exception getting reraised.
     if op == COMPARE_OP and inst.argrepr == 'exception match':
       inst.is_exc_match = True
-      inst.is_req = True
+      inst.is_req = True # any exception match written in the source should be covered.
     if prev.is_exc_match:
       assert op == POP_JUMP_IF_FALSE
       inst.is_exc_jmp_src = True
@@ -420,15 +429,17 @@ def crawl_code_insts(path, code, coverage, dbg_name):
 
     if dbg: err_inst(inst)
 
+  # Step 2: walk the code graph.
+  req = set()
+  opt = set()
+
   visited = set()
-  def find_traceable_edges(prev_line, prev_off, off, cov_idx):
+  def find_traceable_edges(prev_line, prev_off, off, is_req):
     inst = insts[off]
     assert inst.off == off
-    if inst.is_req:
-      cov_idx = COV_IDX_REQUIRED
-    is_opt = (cov_idx == COV_IDX_OPTIONAL)
-    args = (prev_line, prev_off, off, cov_idx)
-    if args in visited or (is_opt and (prev_line, prev_off, off, COV_IDX_REQUIRED) in visited): return
+    is_req = is_req or inst.is_req
+    args = (prev_line, prev_off, off, is_req)
+    if args in visited or (not is_req and (prev_line, prev_off, off, True) in visited): return
     visited.add(args)
     assert off or not inst.is_jump_target # otherwise boolean tests on jump dsts are unsafe.
 
@@ -441,29 +452,25 @@ def crawl_code_insts(path, code, coverage, dbg_name):
     else:
       line = prev_line # jumped forward to an instruction that is not a line start, so display as prev line.
 
-    if dbg:
-      opt = '?' if cov_idx == COV_IDX_OPTIONAL else ''
-      errSL(f'  edge: {prev_line:4}:{prev_off:4} -> {line:4}:{off:4}  {opt}')
-
-    add_edge(coverage, line, cov_idx, prev_off, off, code)
-    #^ The edge might already exist, generated from the same prev_off but different prev_line.
-    #^ If we abandon lnotabs line numbering then we can remove the prev_line parameter and assert that the edge is new.
+    edge = (prev_line, prev_off, line, off)
+    if dbg: err_edge(f'   {"req" if is_req else "opt"}', edge, code)
+    (req if is_req else opt).add(edge)
 
     if op == SETUP_EXCEPT:
       # Enter the exception handler from an unknown exception source.
       # This makes matching harder because while we can trace raises with src=OFF_RAISED,
       # eraises do not get traced and so they have src offset of the END_FINALLY that reraises.
       # The solution is to use reduce_exc_edges().
-      find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, cov_idx)
+      find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req)
     elif op == SETUP_FINALLY:
       if is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, name):
         # omit outer exception edge for code that looks like TEF, because inner EXCEPT block will catch it.
-        find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, cov_idx)
+        find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req)
     elif op == BREAK_LOOP:
       for block_op, dst in reversed(inst.stack):
         if block_op == SETUP_LOOP:
-          find_traceable_edges(line, off, dst, cov_idx)
-          #find_traceable_edges(OFF_RAISED, OFF_RAISED, dst, cov_idx)
+          find_traceable_edges(line, off, dst, is_req)
+          #find_traceable_edges(OFF_RAISED, OFF_RAISED, dst, is_req)
           #^ We might get a normal edge when the loop ends, or an exception edge.
           #^ Since reduce_edges converts normal edges to exception edges, just emit the latter.
           return
@@ -480,7 +487,7 @@ def crawl_code_insts(path, code, coverage, dbg_name):
       #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
       for block_op, block_dst in reversed(inst.stack):
         if block_op == SETUP_FINALLY: # create an edge to next handler dst.
-          find_traceable_edges(line, off, block_dst, cov_idx)
+          find_traceable_edges(line, off, block_dst, is_req)
           return # TODO: it may be that this case can also step to next.
       # TODO: handle WITH_CLEANUP_FINISH case.
       if inst.is_exc_jmp_dst: # can never step to next.
@@ -492,15 +499,15 @@ def crawl_code_insts(path, code, coverage, dbg_name):
     # * turn the second call into a fake tail call using a while loop around this whole function body;
     # * use visit_nodes, which would break ordering of dbg output.
     if op not in stop_opcodes: # normal interpreter step forward.
-      find_traceable_edges(line, off, nexts[off].off, cov_idx)
+      find_traceable_edges(line, off, nexts[off].off, is_req)
     if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
-      # TODO: assert on the nature of this exception match jump dst? always END_FINALLY?
-      idx = COV_IDX_OPTIONAL if (inst.is_exc_jmp_src) else cov_idx
-      find_traceable_edges(line, off, jmp, idx)
+      find_traceable_edges(line, off, jmp, (is_req and not inst.is_exc_jmp_src))
 
   for off in entry_offs:
-    find_traceable_edges(-1, -1, off, COV_IDX_REQUIRED)
+    find_traceable_edges(-1, -1, off, is_req=True)
+
+  return req, opt
 
 
 def err_inst(inst):
@@ -744,10 +751,10 @@ def report_path(target, path, coverage, totals, args):
         suffix = f'required:{len(required)} optional:{len(optional)} traced:{len(traced)}.'
         print(f'     {TXT_B1}^ {suffix}{RST1}')
         possible = required | optional
-        err_traces(f'{TXT_D1}{line:4} {TXT_B1}-', required - traced)
-        err_traces(f'{TXT_D1}{line:4} {TXT_B1}o', optional - traced)
-        err_traces(f'{TXT_D1}{line:4} {TXT_B1}=', possible & traced)
-        err_traces(f'{TXT_D1}{line:4} {TXT_B1}+', traced - possible)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}-', required - traced)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}o', optional - traced)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}=', possible & traced)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}+', traced - possible)
   stats.describe(label, c)
 
 
@@ -814,20 +821,21 @@ def line_ranges(iterable, before, after, terminal):
   yield range(max(1, start), min(end, terminal))
 
 
-def sorted_traces(traces):
-  return sorted(traces, key=lambda t: (t[:-1], t[-1].co_name))
-
-
-def err_trace(label, trace):
-  errSL(label, *(f'{el:4}' for el in trace[:-1]), '  ', trace[-1].co_name)
-
-
-def err_traces(label, traces):
-  for t in sorted_traces(traces):
-    err_trace(label, t)
+def fmt_edge(edge, code):
+  pl, po, l, o = edge
+  return f'{pl:4}:{po:4} -> {l:4}{o:4}  {code.co_name}'
 
 
 def errSL(*items): print(*items, file=stderr)
+
+
+def err_edge(label, edge, code, *tail):
+  errSL(label, fmt_edge(edge, code), *tail)
+
+
+def err_cov_set(label, cov_set):
+  for src, dst, code in sorted(cov_set):
+    errSL(f'{label}: {src:4} -> {dst:4}  {code.co_name}')
 
 
 # Opcode information.
