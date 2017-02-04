@@ -107,9 +107,9 @@ def trace_cmd(cmd, arg_targets, output_path, args):
 def scrub_traceback(tbe):
   'Remove frames from TracebackException object that refer to cove, rather than the child process under examination.'
   stack = tbe.stack # StackSummary is a subclass of list.
-  if not stack or stack[0].filename.find('cove') == -1: return # not the root exception.
-  # TODO: verify that the above find('cove') is sufficiently strict,
-  # while also covering both the installed entry_point and the local dev cases.
+  if not stack or 'cove' not in stack[0].filename: return # not the root exception.
+  #^ TODO: verify that the above is sufficiently strict,
+  #^ while also covering both the installed entry_point and the local dev cases.
   del stack[0]
   while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove cove runpy.run_path frames.
 
