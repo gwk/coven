@@ -301,24 +301,6 @@ def calculate_coverage(path, code_edges, dbg):
 COV_REQ, COV_OPT, COV_TRACED = range(3)
 
 
-def reduce_edges(req, opt, traced):
-  '''
-  Transform the three sets as necessary so that later set comparison operations will calculate
-  per-line coverage appropriately.
-  '''
-  opt.difference_update(req) # might have overlap?
-  possible = req | opt
-  raise_dsts = { edge[1] for edge in possible if edge[0] == OFF_RAISED }
-  def reduce_edge(edge):
-    src, dst, _, dst_line = edge
-    if edge not in possible and dst in raise_dsts:
-      return (OFF_RAISED, dst, OFF_RAISED, dst_line)
-    return edge
-  traced_ = [reduce_edge(edge) for edge in traced]
-  traced.clear()
-  traced.update(traced_)
-
-
 def visit_nodes(start_nodes, visitor):
   remaining = set(start_nodes)
   visited = set()
@@ -610,6 +592,24 @@ def match_inst(inst, exp):
     return inst.opcode == op and inst.argval == arg
   else:
     return inst.opcode == exp
+
+
+def reduce_edges(req, opt, traced):
+  '''
+  Transform the three sets as necessary so that later set comparison operations will calculate
+  per-line coverage appropriately.
+  '''
+  opt.difference_update(req) # might have overlap?
+  possible = req | opt
+  raise_dsts = { edge[1] for edge in possible if edge[0] == OFF_RAISED }
+  def reduce_edge(edge):
+    src, dst, _, dst_line = edge
+    if edge not in possible and dst in raise_dsts:
+      return (OFF_RAISED, dst, OFF_RAISED, dst_line)
+    return edge
+  traced_ = [reduce_edge(edge) for edge in traced]
+  traced.clear()
+  traced.update(traced_)
 
 
 class Stats:
