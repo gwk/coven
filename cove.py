@@ -456,7 +456,16 @@ def crawl_code_insts(path, code, dbg_name):
     if dbg: err_edge(f'   {"req" if is_req else "opt"}', edge, code)
     (req if is_req else opt).add(edge)
 
-    if op == SETUP_EXCEPT:
+    if op == BREAK_LOOP:
+      for block_op, dst in reversed(inst.stack):
+        if block_op == SETUP_LOOP:
+          find_traceable_edges(line, off, dst, is_req)
+          #find_traceable_edges(OFF_RAISED, OFF_RAISED, dst, is_req)
+          #^ We might get a normal edge when the loop ends, or an exception edge.
+          #^ Since reduce_edges converts normal edges to exception edges, just emit the latter.
+          return
+      else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
+    elif op == SETUP_EXCEPT:
       # Enter the exception handler from an unknown exception source.
       # This makes matching harder because while we can trace raises with src=OFF_RAISED,
       # eraises do not get traced and so they have src offset of the END_FINALLY that reraises.
@@ -466,15 +475,6 @@ def crawl_code_insts(path, code, dbg_name):
       if is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, name):
         # omit outer exception edge for code that looks like TEF, because inner EXCEPT block will catch it.
         find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req)
-    elif op == BREAK_LOOP:
-      for block_op, dst in reversed(inst.stack):
-        if block_op == SETUP_LOOP:
-          find_traceable_edges(line, off, dst, is_req)
-          #find_traceable_edges(OFF_RAISED, OFF_RAISED, dst, is_req)
-          #^ We might get a normal edge when the loop ends, or an exception edge.
-          #^ Since reduce_edges converts normal edges to exception edges, just emit the latter.
-          return
-      else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
     elif op == END_FINALLY:
       # The semantics of END_FINALLY are complicated.
       # END_FINALLY can either reraise an exception
