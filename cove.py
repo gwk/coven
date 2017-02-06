@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 from inspect import getmodule
 from os.path import abspath as abs_path, join as path_join, normpath as normalize_path
 from runpy import run_path
-from sys import exc_info, settrace, stderr, stdout
+from sys import exc_info, settraceinst, stderr, stdout
 from types import CodeType
 
 
@@ -92,7 +92,7 @@ def trace_cmd(cmd, arg_targets, output_path, args):
     scrub_traceback(tbe)
     print(*tbe.format(), sep='', end='', file=stderr)
   finally:
-    settrace(None)
+    settraceinst(None, 0)
     stdout.flush()
     stderr.flush()
   sys.argv = orig_argv
@@ -181,9 +181,7 @@ def install_trace(targets, dbg):
 
     return cove_local_tracer # global tracer installs a new local tracer for every call.
 
-  try: settrace(cove_global_tracer, 'instruction')
-  except TypeError: exit('cove error: sys.settrace does not support instruction tracing (private patch)')
-
+  settraceinst(cove_global_tracer, 1)
   return code_edges
 
 
