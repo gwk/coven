@@ -440,11 +440,10 @@ def crawl_code_insts(path, code, dbg_name):
     (req if is_req else opt).add(edge)
 
     if op == BREAK_LOOP:
-      for block_op, dst in reversed(inst.stack):
-        if block_op == SETUP_LOOP:
-          find_traceable_edges(line, off, dst, is_req)
-          return
-      else: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
+      dst = find_block_handler(inst, (SETUP_LOOP,))
+      if not dst: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
+      find_traceable_edges(line, off, dst, is_req)
+      return
 
     elif op == FOR_ITER:
       find_traceable_edges(line, OFF_RAISED, inst.argval, is_req)
@@ -474,10 +473,10 @@ def crawl_code_insts(path, code, dbg_name):
       #   * Never None for an exception compare, which always returns True/False.
       #   * Beyond that, hard to say.
       #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
-      for block_op, block_dst in reversed(inst.stack):
-        if block_op == SETUP_FINALLY: # create an edge to next handler dst.
-          find_traceable_edges(line, off, block_dst, is_req)
-          return # TODO: it may be that this case can also step to next.
+      dst = find_block_handler(inst, (SETUP_FINALLY,))
+      if dst:
+          find_traceable_edges(line, off, dst, is_req)
+          return
       # TODO: handle WITH_CLEANUP_FINISH case.
       if inst.is_exc_jmp_dst: # never steps to next because exception gets reraised.
         return
@@ -516,6 +515,13 @@ def err_inst(inst):
   stack = ''.join(push_abbrs[op] for op, _ in inst.stack)
   arg = f'to {inst.arg if inst.opcode in hasjabs else inst.argrepr} (abs)'
   errSL(f'  line:{line:>4}  off:{off:>4} {dst:4} {exc_match} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
+
+
+def find_block_handler(inst, match_ops):
+  for block_op, block_dst in reversed(inst.stack):
+    if block_op in match_ops:
+      return block_dst
+  return None
 
 
 def is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, code_name):
