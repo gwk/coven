@@ -315,15 +315,19 @@ def sub_codes(code):
   return [c for c in code.co_consts if isinstance(c, CodeType)]
 
 
-def enhance_inst(inst, off, line):
+def enhance_inst(inst, off, line, is_line_start, stack):
   '''
   Add some useful fields to Instruction:
   * off: logical offset; the address of the first EXTENDED_ARG for instructions with preceding EXTENDED_ARG.
   * line: the preceding start_line if this instruction does not have one.
+  * is_line_start: bool of starts_line, but also True when preceded by EXTENDED_ARG that has starts_line set.
+  * stack: represents the approximate static scope of all live frames on the block stack.
   The remaining fields are flags that are set in certain cases.
   '''
   inst.off = off
   inst.line = line
+  inst.is_line_start = is_line_start
+  inst.stack = stack
   inst.is_req = False
   inst.is_exc_match = False
   inst.is_exc_jmp_src = False
@@ -331,7 +335,7 @@ def enhance_inst(inst, off, line):
 
 
 _begin_inst = Instruction(opname='_START', opcode=-1, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=OFF_BEGIN, is_jump_target=False)
-enhance_inst(_begin_inst, off=OFF_BEGIN, line=OFF_BEGIN)
+enhance_inst(_begin_inst, off=OFF_BEGIN, line=OFF_BEGIN, is_line_start=False, stack=())
 
 def crawl_code_insts(path, code, dbg_name):
   name = code.co_name
@@ -350,21 +354,40 @@ def crawl_code_insts(path, code, dbg_name):
   blocks = [] # (op, dst) pairs.
   prev = _begin_inst
   exc_jmp_dsts = set()
-  ext_off = None # address of first EXTENDED_ARG.
+  ext = None # first preceding EXTENDED_ARG.
   #^ EXTENDED_ARG (or several) can precede an actual instruction.
-  #^ In this case, we use the first offset but the final instruction.
+  #^ In this case, we use the first offset and starts_line but the final instruction.
   for inst in get_instructions(code):
     op = inst.opcode
+    if op == EXTENDED_ARG and ext is None:
+      ext = inst
+    off = ext.offset if ext else inst.offset
+    starts_line = ext.starts_line if ext else inst.starts_line
+    is_line_start = bool(starts_line)
+    line = starts_line or prev.line
+
+    while blocks:
+      # We assume here that the runtime lifespan of a block is equivalent to its static span.
+      # According to cpython compile.c it's slightly more complicated;
+      # each block lifespan is terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
+      # however there might be multiple pop instructions for a single block (in different branches),
+      # so it is difficult te reconstruct.
+      # this heuristic is the best we can do for now.
+      # TODO: should this be an if instead of a while? verify pre and post condition.
+      o, d = blocks[-1]
+      assert d >= off
+      if d > off: break
+      blocks.pop()
+
+    if op in push_block_opcodes:
+      dst = inst.argval
+      assert all(dst < d for _, d in blocks)
+      blocks.append((op, dst))
+    enhance_inst(inst, off=off, line=line, is_line_start=is_line_start, stack=tuple(blocks))
     if op == EXTENDED_ARG:
-      if ext_off is None:
-        ext_off = inst.offset
+      if dbg: err_inst(inst)
       continue
-    if ext_off:
-      off = ext_off # change the offset to represent "logical offset".
-      ext_off = None
-    else:
-      off = inst.offset
-    enhance_inst(inst, off=off, line=(inst.starts_line or prev.line))
+
     insts[off] = inst
     nexts[prev.off] = inst
     prevs[off] = prev
@@ -386,27 +409,8 @@ def crawl_code_insts(path, code, dbg_name):
     if off in exc_jmp_dsts:
       inst.is_exc_jmp_dst = True
 
-    prev = inst # update; no longer valid for remainder of loop body.
-
-    while blocks:
-      # We assume here that the runtime lifespan of a block is equivalent to its static span.
-      # According to cpython compile.c it's slightly more complicated;
-      # each block lifespan is terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
-      # however there might be multiple pop instructions for a single block (in different branches),
-      # so it is difficult te reconstruct.
-      # this heuristic is the best we can do for now.
-      # TODO: should this be an if instead of a while? verify pre and post condition.
-      o, d = blocks[-1]
-      assert d >= off
-      if d > off: break
-      blocks.pop()
-
-    if op in push_block_opcodes:
-      dst = inst.argval
-      assert all(dst < d for _, d in blocks)
-      blocks.append((op, dst))
-    inst.stack = tuple(blocks)
-
+    prev = inst
+    if op != EXTENDED_ARG: ext = None
     if dbg: err_inst(inst)
 
   # Step 2: walk the code graph.
@@ -424,8 +428,7 @@ def crawl_code_insts(path, code, dbg_name):
     assert off or not inst.is_jump_target # otherwise boolean tests on jump dsts are unsafe.
 
     op = inst.opcode
-    starts_line = inst.starts_line
-    if starts_line or off < prev_off or prev_line < 0:
+    if inst.is_line_start or off < prev_off or prev_line < 0:
       #^ Our interpretation of the line number tricks described in lnotabs_notes.txt.
       #^ Note: the last clause is not an lnotabs rule, but necessary for exception and yield resume edges.
       line = inst.line
@@ -494,8 +497,8 @@ def crawl_code_insts(path, code, dbg_name):
 
 def err_inst(inst):
   op = inst.opcode
-  line = inst.starts_line or ''
-  off = inst.offset
+  line = inst.starts_line or ('^' if inst.is_line_start else '')
+  off = inst.off
   exc_match = ' '
   if inst.is_exc_jmp_src: exc_match = '^' # jump.
   if inst.is_exc_jmp_dst: exc_match = '_' # land.
