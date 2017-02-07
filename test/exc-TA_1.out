@@ -9,4 +9,4 @@ __main__: test/exc-TA_{:d}.py:
    6 %     try_(arg)
    7 ~   except E1 as e1:
 
-__main__: test/exc-TA_{:d}.py: 10 lines; 3 trivial; 7 traceable; 5 covered; 1 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: test/exc-TA_{:d}.py: 10 lines; 3 trivial; 7 traceable; 4 covered; 2 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.

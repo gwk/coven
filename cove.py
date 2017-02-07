@@ -459,9 +459,8 @@ def crawl_code_insts(path, code, dbg_name):
       find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req)
 
     elif op == SETUP_FINALLY:
-      if is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, name):
-        # omit outer exception edge for code that looks like TEF, because inner EXCEPT block will catch it.
-        find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req)
+      is_req_ = is_req and is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, name)
+      find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req_)
 
     elif op == END_FINALLY:
       # The semantics of END_FINALLY are complicated.
@@ -528,9 +527,9 @@ def find_block_handler(inst, match_ops):
   return None
 
 
-def is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, code_name):
+def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
   '''
-  Some SETUP_FINALLY imply an expected exception edge, but others do not.
+  Some SETUP_FINALLY imply a required exception edge, but others do not.
 
   For a try/except/finally, we do not expect coverage for the case where
   an exception is raised but does not match the except clause,
@@ -552,8 +551,8 @@ def is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, code_name):
   This heuristic attempts to detect TEF, as distinct from TF-TE.
   If it fails, than any exception raised by TF-TE's <code> will be flagged as an impossible edge.
 
-  Separately, compile.c:compiler_try_except emits a nested SETUP_FINALLY for `except _ as <name>`.
-  It generates finally code to delete <name>.
+  Separately, compile.c:compiler_try_except emits a nested SETUP_FINALLY for `except _ as <name>`,
+  and generates finally code to delete <name>.
   This instruction sequence appears easy to recognize, but is again just a heuristic that may fail.
   '''
   assert inst.opcode == SETUP_FINALLY
@@ -567,7 +566,7 @@ def is_SETUP_FINALLY_exc_pad(insts, prevs, nexts, inst, path, code_name):
     op = exc_dst_inst.opcode
     if op == DUP_TOP: return False # TEF.
     if op == POP_TOP: return True # TF-TE.
-    errSL(f'cove WARNING: is_SETUP_FINALLY_exc_pad: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
+    errSL(f'cove WARNING: is_SETUP_FINALLY_exc_req: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
     return False # if the code does actually raise it will be flagged as impossible.
 
   # `except _ as <name>` heuristic looks for a particular cleanup sequence.
@@ -616,11 +615,11 @@ def reduce_edges(req, opt, traced):
   '''
   opt.difference_update(req) # might have overlap?
   possible = req | opt
-  raise_dsts = { edge[1] for edge in possible if edge[0] == OFF_RAISED }
+  raise_dst_lines = { dst : dst_line for src, dst, _, dst_line in possible if src == OFF_RAISED }
   def reduce_edge(edge):
     src, dst, _, dst_line = edge
-    if edge not in possible and dst in raise_dsts:
-      return (OFF_RAISED, dst, OFF_RAISED, dst_line)
+    if edge not in possible and dst in raise_dst_lines:
+      return (OFF_RAISED, dst, OFF_RAISED, raise_dst_lines[dst])
     return edge
   traced_ = [reduce_edge(edge) for edge in traced]
   traced.clear()
