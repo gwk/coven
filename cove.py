@@ -481,6 +481,10 @@ def crawl_code_insts(path, code, dbg_name):
       if inst.is_exc_jmp_dst: # never steps to next because exception gets reraised.
         return
 
+    elif op == RAISE_VARARGS:
+      dst = find_block_handler(inst, (SETUP_EXCEPT, SETUP_FINALLY))
+      if dst: find_traceable_edges(line, OFF_RAISED, dst, is_req)
+
     # note: we currently use recursion to explore the control flow graph.
     # this could hit the recursion limit for large code objects, and is probably slow.
     # alternatively we could:
@@ -513,7 +517,7 @@ def err_inst(inst):
     target = f'push {inst.argval:4}'
   else: target = ''
   stack = ''.join(push_abbrs[op] for op, _ in inst.stack)
-  arg = f'to {inst.arg if inst.opcode in hasjabs else inst.argrepr} (abs)'
+  arg = f'to {inst.arg} (abs)' if inst.opcode in hasjabs else inst.argrepr
   errSL(f'  line:{line:>4}  off:{off:>4} {dst:4} {exc_match} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
 
 
