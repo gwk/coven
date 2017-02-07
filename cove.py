@@ -268,7 +268,7 @@ def calculate_coverage(path, code_edges, dbg):
   A line is fully covered if (required <= traced <= required&optional).
   However there are additional relaxation semantics.
   '''
-  if dbg: errSL(f'\calculate_coverage: {path}:')
+  if dbg: errSL(f'\ncalculate_coverage: {path}:')
 
   all_codes = list(visit_nodes(start_nodes=code_edges, visitor=sub_codes))
   if dbg: all_codes.sort(key=lambda c: c.co_name)
