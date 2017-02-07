@@ -2,7 +2,7 @@
 
 # Note: any modules imported prior to the calls to install_trace and run_path
 # will not report coverage fully, because their <module> code objects will not be captured.
-# Therefore, we import only stdlib modules that we need.
+# Therefore, we only use stdlib modules.
 import sys; assert sys.version_info >= (3, 6, 0)
 import marshal
 import os
@@ -479,7 +479,7 @@ def crawl_code_insts(path, code, dbg_name):
           find_traceable_edges(line, off, block_dst, is_req)
           return # TODO: it may be that this case can also step to next.
       # TODO: handle WITH_CLEANUP_FINISH case.
-      if inst.is_exc_jmp_dst: # can never step to next.
+      if inst.is_exc_jmp_dst: # never steps to next because exception gets reraised.
         return
 
     # note: we currently use recursion to explore the control flow graph.
