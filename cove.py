@@ -459,7 +459,11 @@ def crawl_code_insts(path, code, dbg_name):
       find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req)
 
     elif op == SETUP_FINALLY:
-      is_req_ = is_req and is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, name)
+      is_req_ = (
+        is_req and
+        not is_SETUP_FINALLY_exc_opt(inst, insts, nexts, path, name) and
+        not is_SETUP_FINALLY_dst_as_cleanup(insts[inst.argval], prevs, nexts)
+      )
       find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req_)
 
     elif op == END_FINALLY:
@@ -527,7 +531,7 @@ def find_block_handler(inst, match_ops):
   return None
 
 
-def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
+def is_SETUP_FINALLY_exc_opt(inst, insts, nexts, path, code_name):
   '''
   Some SETUP_FINALLY imply a required exception edge, but others do not.
 
@@ -549,14 +553,7 @@ def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
   but unlike TEF, here we *do* want a second exception edge in case <code> raises.
 
   This heuristic attempts to detect TEF, as distinct from TF-TE.
-  If it fails, than any exception raised by TF-TE's <code> will be flagged as an unexpected edge.
-
-  Separately, compile.c:compiler_try_except emits a nested SETUP_FINALLY for `except _ as <name>`,
-  and generates finally code to delete <name>.
-  This instruction sequence appears easy to recognize, but is again just a heuristic that may fail.
   '''
-  assert inst.opcode == SETUP_FINALLY
-  dst_off = inst.argval
   next_inst = nexts[inst.off]
   if next_inst.opcode == SETUP_EXCEPT:
     # looks like TEF, but might be TF-TE.
@@ -564,14 +561,19 @@ def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
     # Inspect the destination of nested SETUP_EXCEPT.
     exc_dst_inst = insts[next_inst.argval]
     op = exc_dst_inst.opcode
-    if op == DUP_TOP: return False # TEF.
-    if op == POP_TOP: return True # TF-TE.
-    errSL(f'cove WARNING: is_SETUP_FINALLY_exc_req: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
-    return False # if the code does actually raise it will be flagged as unexpected.
+    if op == DUP_TOP: return True # TEF; exception is optional.
+    if op == POP_TOP: return False # TF-TE; exception is required.
+    errSL(f'cove WARNING: is_SETUP_FINALLY_exc_opt: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
+  return False
 
-  # `except _ as <name>` heuristic looks for a particular cleanup sequence.
-  dst_inst = insts[dst_off]
-  if match_insts(dst_inst, prevs, nexts,
+
+def is_SETUP_FINALLY_dst_as_cleanup(inst, prevs, nexts):
+  '''
+  CPython's compile.c:compiler_try_except emits a nested SETUP_FINALLY for `except _ as <name>`,
+  and generates finally code to delete <name>.
+  This instruction sequence appears easy to recognize, but is just a heuristic that may fail.
+  '''
+  return match_insts(inst, prevs, nexts,
     exp_prev=(
       POP_BLOCK,
       POP_EXCEPT,
@@ -580,10 +582,7 @@ def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
       (LOAD_CONST, None), # inst.
       STORE_FAST,
       DELETE_FAST,
-      END_FINALLY)):
-    return False # not an exception that would be reasonably covered.
-
-  return True
+      END_FINALLY))
 
 
 def match_insts(inst, prevs, nexts, exp_prev, expected):
