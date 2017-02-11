@@ -393,6 +393,7 @@ def crawl_code_insts(path, code, dbg_name):
 
     if prev.opcode == YIELD_VALUE:
       entry_offs.append(off)
+
     if op == YIELD_FROM:
       entry_offs.append(off)
 
@@ -463,12 +464,12 @@ def crawl_code_insts(path, code, dbg_name):
 
     elif op == END_FINALLY:
       # The semantics of END_FINALLY are complicated.
-      # END_FINALLY can either reraise an exception
+      # END_FINALLY can either reraise an exception,
       # or in two cases continue execution to the next instruction:
       # * a `with` __exit__ might return True, silencing an exception.
       #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
       # * TOS is None.
-      #   * Never None for an exception compare, which always returns True/False.
+      #   * TOS is never None for an exception compare, which always returns True/False.
       #   * Beyond that, hard to say.
       #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
       dst = find_block_handler(inst, (SETUP_FINALLY,))
@@ -530,9 +531,9 @@ def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
   '''
   Some SETUP_FINALLY imply a required exception edge, but others do not.
 
-  For a try/except/finally, we do not expect coverage for the case where
-  an exception is raised but does not match the except clause,
-  because typical code catches some but not all possible exceptions.
+  For a try/except/finally, we only expect coverage to raise an exception in the try clause.
+  We do not expect an exception in the except clause, or an unhandled exception.
+  In other words, typical code catches some but not all possible exceptions.
   In this case SETUP_FINALLY should not emit an exception edge,
   because the SETUP_EXCEPT that immediately follows will emit its own exception edge.
 
