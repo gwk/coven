@@ -329,8 +329,8 @@ def enhance_inst(inst, off, line, is_line_start, stack):
   inst.stack = stack
   inst.is_req = False
   inst.is_exc_match = False
-  inst.is_exc_jmp_src = False
-  inst.is_exc_jmp_dst = False
+  inst.is_exc_match_jmp_src = False
+  inst.is_exc_match_jmp_dst = False
 
 
 _begin_inst = Instruction(opname='_START', opcode=-1, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=OFF_BEGIN, is_jump_target=False)
@@ -352,7 +352,7 @@ def crawl_code_insts(path, code, dbg_name):
 
   blocks = [] # (op, dst) pairs.
   prev = _begin_inst
-  exc_jmp_dsts = set()
+  exc_match_jmp_dsts = set()
   ext = None # first preceding EXTENDED_ARG.
   #^ EXTENDED_ARG (or several) can precede an actual instruction.
   #^ In this case, we use the first offset and starts_line but the final instruction.
@@ -404,10 +404,10 @@ def crawl_code_insts(path, code, dbg_name):
       inst.is_req = True # any exception match written in the source should be covered.
     if prev.is_exc_match:
       assert op == POP_JUMP_IF_FALSE
-      inst.is_exc_jmp_src = True
-      exc_jmp_dsts.add(inst.argval)
-    if off in exc_jmp_dsts:
-      inst.is_exc_jmp_dst = True
+      inst.is_exc_match_jmp_src = True
+      exc_match_jmp_dsts.add(inst.argval)
+    if off in exc_match_jmp_dsts:
+      inst.is_exc_match_jmp_dst = True
 
     prev = inst
     if op != EXTENDED_ARG: ext = None
@@ -477,7 +477,7 @@ def crawl_code_insts(path, code, dbg_name):
           find_traceable_edges(line, off, dst, is_req)
           return
       # TODO: handle WITH_CLEANUP_FINISH case.
-      if inst.is_exc_jmp_dst: # never steps to next because exception gets reraised.
+      if inst.is_exc_match_jmp_dst: # never steps to next because exception gets reraised.
         return
 
     elif op == RAISE_VARARGS:
@@ -493,7 +493,7 @@ def crawl_code_insts(path, code, dbg_name):
       find_traceable_edges(line, off, nexts[off].off, is_req)
     if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
-      find_traceable_edges(line, off, jmp, (is_req and not inst.is_exc_jmp_src))
+      find_traceable_edges(line, off, jmp, (is_req and not inst.is_exc_match_jmp_src))
 
   for off in entry_offs:
     find_traceable_edges(-1, -1, off, is_req=True)
@@ -506,8 +506,8 @@ def err_inst(inst):
   line = inst.starts_line or ('^' if inst.is_line_start else '')
   off = inst.off
   exc_match = ' '
-  if inst.is_exc_jmp_src: exc_match = '^' # jump.
-  if inst.is_exc_jmp_dst: exc_match = '_' # land.
+  if inst.is_exc_match_jmp_src: exc_match = '^' # jump.
+  if inst.is_exc_match_jmp_dst: exc_match = '_' # land.
   dst = ('DST' if inst.is_jump_target else '   ')
   stop = 'stop' if op in stop_opcodes else '    '
   if op in jump_opcodes:
