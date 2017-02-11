@@ -397,9 +397,9 @@ def crawl_code_insts(path, code, dbg_name):
     if op == YIELD_FROM:
       entry_offs.append(off)
 
-    # calculate if this instruction is doing an exception match,
-    # which will lead to a jump that results in the exception getting reraised.
     if op == COMPARE_OP and inst.argrepr == 'exception match':
+      # This instruction is doing an exception match,
+      # which will lead to a jump that results in the exception getting reraised.
       inst.is_exc_match = True
       inst.is_req = True # any exception match written in the source should be covered.
     if prev.is_exc_match:
