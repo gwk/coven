@@ -494,10 +494,18 @@ def crawl_code_insts(path, code, dbg_name):
     # * turn the second call into a fake tail call using a while loop around this whole function body;
     # * use visit_nodes, which would break ordering of dbg output.
     if op not in stop_opcodes: # normal interpreter step forward.
-      find_traceable_edges(line, off, nexts[off].off, is_req)
+      is_req_ = (
+        is_req and
+        op != END_FINALLY
+      )
+      find_traceable_edges(line, off, nexts[off].off, is_req_)
     if op in jump_opcodes:
       jmp = inst.argval # argval accounts for absolute vs relative offsets.
-      find_traceable_edges(line, off, jmp, (is_req and not inst.is_exc_match_jmp_src))
+      is_req_ = (
+        is_req and
+        not inst.is_exc_match_jmp_src
+      )
+      find_traceable_edges(line, off, jmp, is_req_)
 
   for off in entry_offs:
     find_traceable_edges(-1, -1, off, is_req=True)
