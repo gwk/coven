@@ -366,18 +366,18 @@ def crawl_code_insts(path, code, dbg_name):
     is_line_start = bool(starts_line)
     line = starts_line or prev.line
 
-    while blocks:
-      # We assume here that the runtime lifespan of a block is equivalent to its static span.
-      # According to cpython compile.c it's slightly more complicated;
-      # each block lifespan is terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
-      # however there might be multiple pop instructions for a single block (in different branches),
-      # so it is difficult te reconstruct.
-      # this heuristic is the best we can do for now.
-      # TODO: should this be an if instead of a while? verify pre and post condition.
-      o, d = blocks[-1]
-      assert d >= off
-      if d > off: break
-      blocks.pop()
+    if blocks:
+      _op, dst = blocks[-1]
+      assert dst >= off
+      if dst == off:
+        blocks.pop()
+      #^ According to cpython compile.c,
+      #^ each block lifespan is terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
+      #^ However there might be multiple pop instructions for a single block (in different branches),
+      #^ So it is difficult te reconstruct.
+      #^ Instead we just pretend that blocks span to their jump destination.
+      #^ This is good enough, since the instructions between the actual terminator and the destination
+      #^ are concerned with block management.
 
     if op in push_block_opcodes:
       dst = inst.argval
