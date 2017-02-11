@@ -10,4 +10,4 @@ __main__: test/exc-TEF_{:d}.py:
    6 %     try_(arg)
    7     except E1:
 
-__main__: test/exc-TEF_{:d}.py: 12 lines; 4 trivial; 8 traceable; 6 covered; 1 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: test/exc-TEF_{:d}.py: 12 lines; 4 trivial; 8 traceable; 7 covered; 0 ignored; 0 ignored but covered; 1 not covered.

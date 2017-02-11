@@ -18,4 +18,4 @@ __main__: test/for_{}.py:
   19 % def else_(): pass
   20
 
-__main__: test/for_{}.py: 22 lines; 10 trivial; 12 traceable; 9 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 3 not covered.
+__main__: test/for_{}.py: 22 lines; 10 trivial; 12 traceable; 9 covered; 0 ignored; 0 ignored but covered; 3 not covered.

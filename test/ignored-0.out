@@ -27,4 +27,4 @@ __main__: test/ignored-{}.py:
   23
   24   for a in argv[1]: top(int(a))
 
-__main__: test/ignored-{}.py: 24 lines; 8 trivial; 16 traceable; 6 covered; 0 relaxed; 6 ignored; 0 ignored but covered; 4 not covered.
+__main__: test/ignored-{}.py: 24 lines; 8 trivial; 16 traceable; 6 covered; 6 ignored; 0 ignored but covered; 4 not covered.

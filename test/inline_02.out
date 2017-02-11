@@ -22,4 +22,4 @@ __main__: test/inline_{}.py:
   21 %   finally: r_fin = (1 if arg == 1 else arg)
   22
 
-__main__: test/inline_{}.py: 28 lines; 11 trivial; 17 traceable; 12 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 5 not covered.
+__main__: test/inline_{}.py: 28 lines; 11 trivial; 17 traceable; 12 covered; 0 ignored; 0 ignored but covered; 5 not covered.

@@ -7,10 +7,10 @@ __main__: test/exc-TEL_{}.py:
    4   def top(arg):
    5     try:
    6 %     try_(arg)
-   7 ~   except E1:
+   7     except E1:
    8       exc()
    9     else:
   10 !     else_()
   11
 
-__main__: test/exc-TEL_{}.py: 12 lines; 4 trivial; 8 traceable; 5 covered; 1 relaxed; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: test/exc-TEL_{}.py: 12 lines; 4 trivial; 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.

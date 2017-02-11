@@ -9,4 +9,4 @@ __main__: test/for_{}.py:
   13 !       break
   14     else:
 
-__main__: test/for_{}.py: 22 lines; 10 trivial; 12 traceable; 11 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: test/for_{}.py: 22 lines; 10 trivial; 12 traceable; 11 covered; 0 ignored; 0 ignored but covered; 1 not covered.

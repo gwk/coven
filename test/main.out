@@ -1,6 +1,4 @@
 ----------------
 Coverage Report:
 
-__main__: test/main.py:
-
-__main__: test/main.py: 4 lines; 2 trivial; 2 traceable; 1 covered; 0 relaxed; 1 ignored; 0 ignored but covered; 0 not covered.
+__main__: test/main.py: 4 lines; 2 trivial; 2 traceable; 1 covered; 1 ignored; 0 ignored but covered; 0 not covered.

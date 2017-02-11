@@ -9,4 +9,4 @@ __main__: test/basic_{}.py:
    6 %   if arg:
    7       inlined()
 
-__main__: test/basic_{}.py: 16 lines; 7 trivial; 9 traceable; 8 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: test/basic_{}.py: 16 lines; 7 trivial; 9 traceable; 8 covered; 0 ignored; 0 ignored but covered; 1 not covered.

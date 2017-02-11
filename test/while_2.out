@@ -19,4 +19,4 @@ __main__: test/while_{}.py:
   23 % def else_(): pass
   24
 
-__main__: test/while_{}.py: 25 lines; 9 trivial; 16 traceable; 12 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 4 not covered.
+__main__: test/while_{}.py: 25 lines; 9 trivial; 16 traceable; 12 covered; 0 ignored; 0 ignored but covered; 4 not covered.

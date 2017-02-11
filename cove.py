@@ -265,8 +265,7 @@ def calculate_coverage(path, code_edges, dbg):
   Which maps line numbers to (required, optional, traced) triples of sets of (src, dst, code).
   Each set contains Edge tuples.
   An Edge is (prev_offset, offset, code).
-  A line is fully covered if (required <= traced <= required&optional).
-  However there are additional relaxation semantics.
+  A line is fully covered if (required <= traced).
   '''
   if dbg: errSL(f'\ncalculate_coverage: {path}:')
 
@@ -549,7 +548,7 @@ def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
   but unlike TEF, here we *do* want a second exception edge in case <code> raises.
 
   This heuristic attempts to detect TEF, as distinct from TF-TE.
-  If it fails, than any exception raised by TF-TE's <code> will be flagged as an impossible edge.
+  If it fails, than any exception raised by TF-TE's <code> will be flagged as an unexpected edge.
 
   Separately, compile.c:compiler_try_except emits a nested SETUP_FINALLY for `except _ as <name>`,
   and generates finally code to delete <name>.
@@ -567,7 +566,7 @@ def is_SETUP_FINALLY_exc_req(insts, prevs, nexts, inst, path, code_name):
     if op == DUP_TOP: return False # TEF.
     if op == POP_TOP: return True # TF-TE.
     errSL(f'cove WARNING: is_SETUP_FINALLY_exc_req: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
-    return False # if the code does actually raise it will be flagged as impossible.
+    return False # if the code does actually raise it will be flagged as unexpected.
 
   # `except _ as <name>` heuristic looks for a particular cleanup sequence.
   dst_inst = insts[dst_off]
@@ -633,7 +632,6 @@ class Stats:
     self.trivial = 0
     self.traceable = 0
     self.covered = 0
-    self.relaxed = 0
     self.ignored = 0
     self.ignored_but_covered = 0
     self.not_covered = 0
@@ -643,7 +641,6 @@ class Stats:
     self.trivial += stats.trivial
     self.traceable += stats.traceable
     self.covered += stats.covered
-    self.relaxed += stats.relaxed
     self.ignored += stats.ignored
     self.ignored_but_covered += stats.ignored_but_covered
     self.not_covered += stats.not_covered
@@ -651,7 +648,6 @@ class Stats:
   def describe_stat(self, name, val, c):
     colors = {
       'trivial' : c and TXT_L,
-      'relaxed' : c and TXT_G,
       'ignored' : c and TXT_C,
       'ignored_but_covered' : c and TXT_Y,
       'not_covered' : c and TXT_R,
@@ -669,26 +665,28 @@ class Stats:
 def report_path(target, path, coverage, totals, args):
 
   line_texts = [text.rstrip() for text in open(path).readlines()]
+  ignored_lines = calc_ignored_lines(line_texts)
 
   covered_lines = set() # line indices that are perfectly covered.
-  relaxed_lines = set() # line indices that are not perfectly covered but meet the relaxed requirement.
-  not_cov_lines = set() # line indices that are not well covered.
-  impossible_lines = set()
+  ign_cov_lines = set()
+  not_cov_lines = set()
+
+  unexpected_lines = set() # line indices that have unexpected edges.
 
   for line, (required, optional, traced) in coverage.items():
     possible = required | optional
     unexpected = traced - possible
-    if traced == possible:
-      covered_lines.add(line)
-    elif traced >= required and not unexpected:
-      relaxed_lines.add(line)
-    else:
+    if traced >= required:
+      if line in ignored_lines:
+        ign_cov_lines.add(line)
+      else:
+        covered_lines.add(line)
+    elif line not in ignored_lines:
       not_cov_lines.add(line)
-      if unexpected:
-        impossible_lines.add(line)
+    if unexpected:
+      unexpected_lines.add(line)
 
-  ignored_lines = calc_ignored_lines(line_texts)
-  ign_cov_lines = ignored_lines & covered_lines
+  problem_lines = ign_cov_lines | not_cov_lines | unexpected_lines
 
   length = len(line_texts)
   stats = Stats()
@@ -696,16 +694,15 @@ def report_path(target, path, coverage, totals, args):
   stats.trivial = max(0, length - len(coverage))
   stats.traceable = len(coverage)
   stats.covered = len(covered_lines)
-  stats.relaxed = len(relaxed_lines)
-  stats.ignored = len(ignored_lines)
+  stats.ignored = len(ignored_lines) - len(ign_cov_lines)
   stats.ignored_but_covered = len(ign_cov_lines)
-  stats.not_covered = len(not_cov_lines - ignored_lines)
+  stats.not_covered = len(not_cov_lines)
   totals.add(stats)
 
   c = True if args.color else ''
   rel_path = path_rel_to_current_or_abs(path)
   label = f'\n{target}: {rel_path}'
-  if not (args.show_all or ign_cov_lines or not_cov_lines):
+  if not problem_lines:
     stats.describe(label, c)
     return
 
@@ -722,7 +719,7 @@ def report_path(target, path, coverage, totals, args):
   if args.show_all:
     reported_lines = range(1, length + 1) # entire document, 1-indexed.
   else:
-    reported_lines = sorted(impossible_lines | (not_cov_lines ^ ignored_lines))
+    reported_lines = sorted(problem_lines)
   ranges = line_ranges(reported_lines, before=4, after=1, terminal=length+1)
   for r in ranges:
     if r is None:
@@ -737,31 +734,24 @@ def report_path(target, path, coverage, totals, args):
         color = TXT_L1
       else:
         required, optional, traced = coverage[line]
-        if line in covered_lines:
-          if line in ign_cov_lines:
-            color = TXT_Y1
-            sym = '?'
-          # else default symbol / color.
-        elif line in relaxed_lines:
-          color = TXT_G1
-          sym = '~'
+        if line in unexpected_lines:
+          color = TXT_M1
+          sym = '*'
           needs_dbg = True
-        else:
-          assert line in not_cov_lines
-          if line in impossible_lines:
-            color = TXT_M1
-            sym = '*'
+        elif line in ign_cov_lines:
+          color = TXT_Y1
+          sym = '?'
+        elif line in ignored_lines:
+          color = TXT_C1
+          sym = '|'
+        elif line in not_cov_lines:
+          color = TXT_R1
+          if traced:
+            sym = '%'
             needs_dbg = True
-          elif line in ignored_lines:
-            color = TXT_C1
-            sym = '|'
-          else:
-            color = TXT_R1
-            if traced:
-              sym = '%'
-              needs_dbg = True
-            else: # no coverage.
-              sym = '!'
+          else: # no coverage.
+            sym = '!'
+        else: assert line in covered_lines
       print(f'{TXT_D1}{line:4} {color}{sym} {text}{RST1}'.rstrip())
       if args.dbg and needs_dbg:
         suffix = f'required:{len(required)} optional:{len(optional)} traced:{len(traced)}.'

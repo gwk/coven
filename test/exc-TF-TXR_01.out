@@ -12,4 +12,4 @@ __main__: test/exc-TF-TXR_{}.py:
   10 %     if arg == 1:
   11         raise TestException # this tests the is_TEF heuristic.
 
-__main__: test/exc-TF-TXR_{}.py: 15 lines; 4 trivial; 11 traceable; 8 covered; 0 relaxed; 0 ignored; 0 ignored but covered; 3 not covered.
+__main__: test/exc-TF-TXR_{}.py: 15 lines; 4 trivial; 11 traceable; 8 covered; 0 ignored; 0 ignored but covered; 3 not covered.
