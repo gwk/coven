@@ -1,3 +1,4 @@
+handle_args: char:2; exception: E2().
 ----------------
 Coverage Report:
 
@@ -6,7 +7,7 @@ __main__: test/exc-TEF_{:d}.py:
    4   def top(arg):
    5     try:
    6       try_(arg)
-   7 !   except E1:
+   7 %   except E1:
    8 !     exc()
    9     finally:
 
