@@ -499,7 +499,7 @@ def crawl_code_insts(path, code, dbg_name):
     for arc in sorted(starts_to_arcs.values(), key=arc_key):
       src_offs = sorted(inst.off for inst in srcs[arc[0]])
       dst_offs = sorted(inst.off for inst in dsts[arc[-1]])
-      errSL('arc:', src_offs, '=->', dst_offs)
+      errSL(TXT_D, 'arc:', src_offs, '=->', dst_offs, RST)
       for inst in arc:
         err_inst(inst)
 
