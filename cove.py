@@ -347,10 +347,8 @@ def crawl_code_insts(path, code, dbg_name):
   if dbg: errSL(f'\ncrawl code: {path}:{name}')
 
   insts = { OFF_BEGIN : _begin_inst, OFF_RAISED : _raised_inst } # offsets (accounting for EXTENDED_ARG) to Instructions.
-  nexts = {} # offsets to prev Instruction.
-  prevs = {} # offsets to next Instruction.
-  #^ track jumps predicated on a preceding COMPARE_OP performing 'exception match'.
-  #^ the jump dst is treated as optional, because all possible exceptions cannot be reasonably covered.
+  nexts = {} # instructions to prev instruction.
+  prevs = {} # instructions to next instruction.
   entry_insts = [] # crawl start points.
   setup_finally_insts = []
 
@@ -395,8 +393,8 @@ def crawl_code_insts(path, code, dbg_name):
     ext = None
 
     insts[off] = inst
-    nexts[prev.off] = inst
-    prevs[off] = prev
+    nexts[prev] = inst
+    prevs[inst] = prev
 
     if off == 0:
       entry_insts.append(inst)
@@ -426,7 +424,7 @@ def crawl_code_insts(path, code, dbg_name):
 
   # Addendum: annotate SETUP_FINALLY insts.
   for inst in setup_finally_insts:
-    if is_SETUP_FINALLY_exc_opt(inst, nexts[inst.off], insts, path, name):
+    if is_SETUP_FINALLY_exc_opt(inst, nexts[inst], insts, path, name):
       insts[inst.argval].is_SF_exc_opt = True
 
   # Step 2: find all arcs.
@@ -495,7 +493,7 @@ def crawl_code_insts(path, code, dbg_name):
 
       if inst.opcode in arc_terminator_opcodes:
         break
-      nxt = nexts[inst.off]
+      nxt = nexts[inst]
       if nxt.is_jump_target:
         break
       inst = nxt
@@ -505,7 +503,7 @@ def crawl_code_insts(path, code, dbg_name):
     arcs[arc[0]].add(tuple(arc))
 
     if inst.opcode not in stop_opcodes and ok_step_EF:
-      nxt = nexts[inst.off]
+      nxt = nexts[inst]
       dsts.append(((inst, line), (nxt, next_line(inst, line, nxt))))
     if inst.opcode in jump_opcodes:
       dst = insts[inst.argval]
@@ -651,15 +649,15 @@ def is_arc_exc_as_cleanup(arc):
 
 
 def match_insts(inst, prevs, nexts, exp_prev, expected):
-  p = prevs[inst.off]
+  p = prevs[inst]
   for exp in reversed(exp_prev):
     if not match_inst(p, exp): return False
-    try: p = prevs[p.off]
+    try: p = prevs[p]
     except KeyError: return False
   n = inst
   for exp in expected:
     if not match_inst(n, exp): return False
-    try: n = nexts[n.off]
+    try: n = nexts[n]
     except KeyError: return False
   return True
 
