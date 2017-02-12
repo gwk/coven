@@ -115,9 +115,9 @@ def scrub_traceback(tbe):
 
 
 # Fake instruction/line offsets.
-OFF_BEGIN = -1
-OFF_RAISED = -2
-OFF_RETURN = -3
+LINE_BEGIN  = OFF_BEGIN  = OP_BEGIN  = -1
+LINE_RAISED = OFF_RAISED = OP_RAISED = -2
+LINE_RETURN = OFF_RETURN = OP_RETURN = -3
 
 
 def install_trace(targets, dbg):
@@ -159,7 +159,7 @@ def install_trace(targets, dbg):
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
     edges = code_edges[code]
-    prev_line = OFF_BEGIN
+    prev_line = LINE_BEGIN
     prev_off  = OFF_BEGIN
     def cove_local_tracer(frame, event, arg):
       nonlocal prev_line, prev_off
@@ -171,10 +171,10 @@ def install_trace(targets, dbg):
         prev_line = line
         prev_off = off
       elif event == 'exception':
-        prev_line = OFF_RAISED
+        prev_line = LINE_RAISED
         prev_off  = OFF_RAISED
       elif event == 'return':
-        prev_line = OFF_RETURN
+        prev_line = LINE_RETURN
         prev_off  = OFF_RETURN
       else: raise ValueError(event)
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
@@ -333,8 +333,8 @@ def enhance_inst(inst, off, line, is_line_start, stack):
   inst.is_exc_match_jmp_dst = False
 
 
-_begin_inst = Instruction(opname='_START', opcode=-1, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=OFF_BEGIN, is_jump_target=False)
-enhance_inst(_begin_inst, off=OFF_BEGIN, line=OFF_BEGIN, is_line_start=False, stack=())
+_begin_inst = Instruction(opname='_BEGIN', opcode=OP_BEGIN, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=LINE_BEGIN, is_jump_target=False)
+enhance_inst(_begin_inst, off=OFF_BEGIN, line=LINE_BEGIN, is_line_start=False, stack=())
 
 def crawl_code_insts(path, code, dbg_name):
   name = code.co_name
@@ -456,7 +456,7 @@ def crawl_code_insts(path, code, dbg_name):
       # This makes matching harder because while we can trace raises with src=OFF_RAISED,
       # raises do not get traced and so they have src offset of the END_FINALLY that reraises.
       # The solution is to use reduce_exc_edges().
-      find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req)
+      find_traceable_edges(LINE_RAISED, OFF_RAISED, inst.argval, is_req)
 
     elif op == SETUP_FINALLY:
       is_req_ = (
@@ -464,7 +464,7 @@ def crawl_code_insts(path, code, dbg_name):
         not is_SETUP_FINALLY_exc_opt(inst, insts, nexts, path, name) and
         not is_SETUP_FINALLY_dst_as_cleanup(insts[inst.argval], prevs, nexts)
       )
-      find_traceable_edges(OFF_RAISED, OFF_RAISED, inst.argval, is_req_)
+      find_traceable_edges(LINE_RAISED, OFF_RAISED, inst.argval, is_req_)
 
     elif op == END_FINALLY:
       # The semantics of END_FINALLY are complicated.
@@ -626,7 +626,7 @@ def reduce_edges(req, opt, traced):
   def reduce_edge(edge):
     src, dst, _, dst_line = edge
     if edge not in possible and dst in raise_dst_lines:
-      return (OFF_RAISED, dst, OFF_RAISED, raise_dst_lines[dst])
+      return (OFF_RAISED, dst, LINE_RAISED, raise_dst_lines[dst])
     return edge
   traced_ = [reduce_edge(edge) for edge in traced]
   traced.clear()
