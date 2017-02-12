@@ -116,8 +116,8 @@ def scrub_traceback(tbe):
 
 # Fake instruction/line offsets.
 OFF_BEGIN = -1
-OFF_RETURN = -2
-OFF_RAISED = -3
+OFF_RAISED = -2
+OFF_RETURN = -3
 
 
 def install_trace(targets, dbg):
@@ -170,12 +170,12 @@ def install_trace(targets, dbg):
         edges.add((prev_off, off, prev_line, line))
         prev_line = line
         prev_off = off
-      elif event == 'return':
-        prev_line = OFF_RETURN
-        prev_off  = OFF_RETURN
       elif event == 'exception':
         prev_line = OFF_RAISED
         prev_off  = OFF_RAISED
+      elif event == 'return':
+        prev_line = OFF_RETURN
+        prev_off  = OFF_RETURN
       else: raise ValueError(event)
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
 
