@@ -386,6 +386,7 @@ def crawl_code_insts(path, code, dbg_name):
     if op == EXTENDED_ARG:
       if dbg: err_inst(inst)
       continue
+    ext = None
 
     insts[off] = inst
     nexts[prev.off] = inst
@@ -410,7 +411,6 @@ def crawl_code_insts(path, code, dbg_name):
       inst.is_exc_match_jmp_dst = True
 
     prev = inst
-    if op != EXTENDED_ARG: ext = None
     if dbg: err_inst(inst)
 
   # Step 2: walk the code graph.
