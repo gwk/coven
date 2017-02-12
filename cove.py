@@ -351,7 +351,7 @@ def crawl_code_insts(path, code, dbg_name):
   prevs = {} # instructions to next instruction.
   entry_insts = [] # crawl start points.
 
-  # Step 1: scan over instructions and assemble structure.
+  # Step 1: scan raw instructions and assemble structure.
 
   blocks = [] # (op, dst) pairs.
   prev = _begin_inst
@@ -471,34 +471,31 @@ def crawl_code_insts(path, code, dbg_name):
       dst_off = find_block_dst_off(inst, (SETUP_EXCEPT, SETUP_FINALLY))
       if dst_off: dsts[_raised_inst].add(insts[dst_off])
 
+  srcs = defaultdict(set)
+  for src, dst_set in dsts.items():
+    for dst in dst_set:
+      srcs[dst].add(src)
 
-  # Step 2: find all arcs.
+  # Step 3: find all arcs.
   starts_to_arcs = {} # maps first instructions to arcs.
 
   def find_arcs(inst):
-    arc = []
-    while True:
+    arc = [inst]
+    dst_set = dsts[inst]
+    while len(dst_set) == 1:
+      for inst in dst_set: pass # advance; best way to get the single element out.
+      if len(srcs[inst]) != 1: break
       arc.append(inst)
-      if inst.opcode in arc_terminator_opcodes:
-        break
-      assert len(dsts[inst]) < 2
-      nxt = nexts[inst]
-      if nxt.is_jump_target:
-        break
-      inst = nxt
+      dst_set = dsts[inst]
     a = tuple(arc)
     assert a
     assert a[0] not in starts_to_arcs
     starts_to_arcs[a[0]] = a
-    return dsts[inst]
+    return dst_set
 
   visit_nodes(start_nodes=(dsts[_begin_inst] | dsts[_raised_inst]), visitor=find_arcs)
 
   if dbg:
-    srcs = defaultdict(set)
-    for src, dst_set in dsts.items():
-      for dst in dst_set:
-        srcs[dst].add(src)
     for arc in sorted(starts_to_arcs.values(), key=arc_key):
       src_offs = sorted(inst.off for inst in srcs[arc[0]])
       dst_offs = sorted(inst.off for inst in dsts[arc[-1]])
@@ -506,7 +503,7 @@ def crawl_code_insts(path, code, dbg_name):
       for inst in arc:
         err_inst(inst)
 
-  # Step 3: emit edges for each arc, taking care to represent lines as they will be traced.
+  # Step 4: emit edges for each arc, taking care to represent lines as they will be traced.
   req = set()
   opt = set()
   def add_edge(edge, is_opt):
@@ -649,7 +646,7 @@ def is_arc_exc_as_cleanup(src, arc):
     STORE_FAST,
     DELETE_FAST,
     END_FINALLY)
-  if len(arc) != len(expected): return False
+  if len(arc) < len(expected): return False
   return all(match_inst(*p) for p in zip(arc, expected))
 
 
@@ -1003,9 +1000,6 @@ pop_block_opcodes = {
   POP_BLOCK,
   POP_EXCEPT,
 }
-
-arc_terminator_opcodes = stop_opcodes | jump_opcodes
-
 
 RST = '\x1b[0m'
 TXT_B = '\x1b[34m'
