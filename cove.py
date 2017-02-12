@@ -12,6 +12,7 @@ from collections import defaultdict
 from dis import Instruction, findlinestarts, get_instructions, hasjabs, hasjrel, opname, opmap
 from argparse import ArgumentParser
 from inspect import getmodule
+from itertools import chain
 from os.path import abspath as abs_path, join as path_join, normpath as normalize_path
 from runpy import run_path
 from sys import exc_info, settraceinst, stderr, stdout
@@ -276,7 +277,7 @@ def calculate_coverage(path, code_edges, dbg):
   def add_edges(edges, code, cov_idx):
     for edge in edges:
       line = edge[3]
-      assert line >= 0
+      assert line > 0
       coverage[line][cov_idx].add((edge[0], edge[1], code))
 
   for code in all_codes:
@@ -327,7 +328,7 @@ def enhance_inst(inst, off, line, is_line_start, stack):
   inst.line = line
   inst.is_line_start = is_line_start
   inst.stack = stack
-  inst.is_req = False
+  inst.is_SF_exc_opt = False
   inst.is_exc_match = False
   inst.is_exc_match_jmp_src = False
   inst.is_exc_match_jmp_dst = False
@@ -336,17 +337,22 @@ def enhance_inst(inst, off, line, is_line_start, stack):
 _begin_inst = Instruction(opname='_BEGIN', opcode=OP_BEGIN, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=LINE_BEGIN, is_jump_target=False)
 enhance_inst(_begin_inst, off=OFF_BEGIN, line=LINE_BEGIN, is_line_start=False, stack=())
 
+_raised_inst = Instruction(opname='_RAISED', opcode=OP_RAISED, arg=None, argval=None, argrepr=None, offset=OFF_RAISED, starts_line=LINE_RAISED, is_jump_target=False)
+enhance_inst(_raised_inst, off=OFF_RAISED, line=LINE_RAISED, is_line_start=False, stack=())
+
+
 def crawl_code_insts(path, code, dbg_name):
   name = code.co_name
   dbg = (name == dbg_name)
   if dbg: errSL(f'\ncrawl code: {path}:{name}')
 
-  insts = {} # offsets (accounting for EXTENDED_ARG) to Instructions.
-  nexts = {} # to prev Instruction.
-  prevs = {} # to next Instruction.
+  insts = { OFF_BEGIN : _begin_inst, OFF_RAISED : _raised_inst } # offsets (accounting for EXTENDED_ARG) to Instructions.
+  nexts = {} # offsets to prev Instruction.
+  prevs = {} # offsets to next Instruction.
   #^ track jumps predicated on a preceding COMPARE_OP performing 'exception match'.
   #^ the jump dst is treated as optional, because all possible exceptions cannot be reasonably covered.
-  entry_offs = [0] # crawl starting points.
+  entry_insts = [] # crawl start points.
+  setup_finally_insts = []
 
   # Step 1: scan over instructions and assemble structure.
 
@@ -392,17 +398,19 @@ def crawl_code_insts(path, code, dbg_name):
     nexts[prev.off] = inst
     prevs[off] = prev
 
+    if off == 0:
+      entry_insts.append(inst)
+
     if prev.opcode == YIELD_VALUE:
-      entry_offs.append(off)
+      entry_insts.append(inst)
 
     if op == YIELD_FROM:
-      entry_offs.append(off)
+      entry_insts.append(inst)
 
     if op == COMPARE_OP and inst.argrepr == 'exception match':
       # This instruction is doing an exception match,
       # which will lead to a jump that results in the exception getting reraised.
       inst.is_exc_match = True
-      inst.is_req = True # any exception match written in the source should be covered.
     if prev.is_exc_match:
       assert op == POP_JUMP_IF_FALSE
       inst.is_exc_match_jmp_src = True
@@ -410,116 +418,144 @@ def crawl_code_insts(path, code, dbg_name):
     if off in exc_match_jmp_dsts:
       inst.is_exc_match_jmp_dst = True
 
+    if op == SETUP_FINALLY:
+      setup_finally_insts.append(inst)
+
     prev = inst
     if dbg: err_inst(inst)
 
-  # Step 2: walk the code graph.
+  # Addendum: annotate SETUP_FINALLY insts.
+  for inst in setup_finally_insts:
+    if is_SETUP_FINALLY_exc_opt(inst, nexts[inst.off], insts, path, name):
+      insts[inst.argval].is_SF_exc_opt = True
+
+  # Step 2: find all arcs.
+  arcs = defaultdict(set)
+
+  def next_line(inst, line, nxt):
+    '''
+    Our interpretation of the line number tricks described in lnotabs_notes.txt.
+    Note: the last clause is not an lnotabs rule, but necessary for exception and yield resume edges. TODO: Still necessary?
+    '''
+    return nxt.line if (nxt.is_line_start or nxt.off < inst.off or line < 0) else line
+
+  def find_arcs(pairs):
+    prev_pair, (inst, line) = pairs
+    arc = [prev_pair]
+    dsts = []
+    ok_step_EF = True # special case for END_FINALLY.
+    while True:
+      arc.append((inst, line))
+      op = inst.opcode
+
+      if op == BREAK_LOOP:
+        dst = find_block_handler(inst, insts, (SETUP_LOOP,))
+        if not dst: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
+        dsts.append(((inst, line), (dst, next_line(inst, line, dst))))
+
+      elif op == FOR_ITER:
+        dst = insts[inst.argval]
+        dsts.append(((_raised_inst, line), (dst, next_line(inst, line, dst))))
+        #^ We might get a normal edge when the loop ends, or a StopIteration exception edge.
+        #^ Since reduce_edges can convert normal edges to exception edges, just emit the latter.
+        #^ Note: unlike other exception edges we specify line.
+        #^ This ensures that breaking edges get shown on the `for` loop line.
+
+      elif op in (SETUP_EXCEPT, SETUP_FINALLY):
+        dst = insts[inst.argval]
+        dsts.append(((_raised_inst, LINE_RAISED), (dst, dst.line)))
+        #^ Enter the exception handler from an unknown exception source.
+        #^ This makes matching harder because while we can trace raises with src=OFF_RAISED,
+        #^ reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
+        #^ The solution is to use reduce_exc_edges().
+        # TODO: revisit this. Either rely on reduce_exc_edges always and do not set off=OFF_RAISED in local tracer,
+        # or perhaps it is possible to emit optional edges from reraising END_FINALLY?
+
+      elif op == END_FINALLY:
+        # END_FINALLY can either reraise an exception,
+        # or in two cases continue execution to the next instruction:
+        # * a `with` __exit__ might return True, silencing an exception.
+        #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
+        # * TOS is None.
+        #   * TOS is never None for an exception compare, which always returns True/False.
+        #   * Beyond that, hard to say.
+        #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
+        # TODO: handle WITH_CLEANUP_FINISH case.
+        dst = find_block_handler(inst, insts, (SETUP_FINALLY,))
+        if dst:
+          dsts.append(((inst, line), (dst, next_line(inst, line, dst))))
+          break
+        if inst.is_exc_match_jmp_dst: # never steps to next because exception gets reraised.
+          ok_step_EF = False
+          break
+
+      elif op == RAISE_VARARGS:
+        dst = find_block_handler(inst, insts, (SETUP_EXCEPT, SETUP_FINALLY))
+        if dst: dsts.append(((_raised_inst, LINE_RAISED), (dst, dst.line)))
+
+      if inst.opcode in arc_terminator_opcodes:
+        break
+      nxt = nexts[inst.off]
+      if nxt.is_jump_target:
+        break
+      inst = nxt
+      if inst.is_line_start or line < 0:
+        line = inst.line
+
+    arcs[arc[0]].add(tuple(arc))
+
+    if inst.opcode not in stop_opcodes and ok_step_EF:
+      nxt = nexts[inst.off]
+      dsts.append(((inst, line), (nxt, next_line(inst, line, nxt))))
+    if inst.opcode in jump_opcodes:
+      dst = insts[inst.argval]
+      dsts.append(((inst, line), (dst, next_line(inst, line, dst))))
+    return dsts
+
+  start_pairs = [((_begin_inst, LINE_BEGIN), (inst, inst.line)) for inst in entry_insts]
+  visit_nodes(start_nodes=start_pairs, visitor=find_arcs)
+
+  def arc_offs(arc): return tuple(inst.off for inst, _ in arc)
+
+  if dbg:
+    for arc in sorted(chain(*arcs.values()), key=arc_offs):
+      errSL('Arc:', 'opt' if is_arc_opt(arc) else 'req')
+      for inst, line in arc:
+        err_inst(inst, prefix=f'{line:4}')
+
+  # Step 3: emit edges for each arc.
   req = set()
   opt = set()
 
-  visited = set()
-  def find_traceable_edges(prev_line, prev_off, off, is_req):
-    inst = insts[off]
-    assert inst.off == off
-    is_req = is_req or inst.is_req
-    args = (prev_line, prev_off, off, is_req)
-    if args in visited or (not is_req and (prev_line, prev_off, off, True) in visited): return
-    visited.add(args)
-    assert off or not inst.is_jump_target # otherwise boolean tests on jump dsts are unsafe.
-
-    op = inst.opcode
-    if inst.is_line_start or off < prev_off or prev_line < 0:
-      #^ Our interpretation of the line number tricks described in lnotabs_notes.txt.
-      #^ Note: the last clause is not an lnotabs rule, but necessary for exception and yield resume edges.
-      line = inst.line
-    else:
-      line = prev_line # jumped forward to an instruction that is not a line start, so display as prev line.
-
-    edge = (prev_off, off, prev_line, line)
-    if dbg: err_edge(f'   {"req" if is_req else "opt"}', edge, code)
-    (req if is_req else opt).add(edge)
-
-    if op == BREAK_LOOP:
-      dst = find_block_handler(inst, (SETUP_LOOP,))
-      if not dst: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
-      find_traceable_edges(line, off, dst, is_req)
-      return
-
-    elif op == FOR_ITER:
-      find_traceable_edges(line, OFF_RAISED, inst.argval, is_req)
-      #^ We might get a normal edge when the loop ends, or a StopIteration exception edge.
-      #^ Since reduce_edges can convert normal edges to exception edges, just emit the latter.
-      #^ Note: unlike other exception edges we specify prev_line.
-
-    elif op == SETUP_EXCEPT:
-      # Enter the exception handler from an unknown exception source.
-      # This makes matching harder because while we can trace raises with src=OFF_RAISED,
-      # raises do not get traced and so they have src offset of the END_FINALLY that reraises.
-      # The solution is to use reduce_exc_edges().
-      find_traceable_edges(LINE_RAISED, OFF_RAISED, inst.argval, is_req)
-
-    elif op == SETUP_FINALLY:
-      is_req_ = (
-        is_req and
-        not is_SETUP_FINALLY_exc_opt(inst, insts, nexts, path, name) and
-        not is_SETUP_FINALLY_dst_as_cleanup(insts[inst.argval], prevs, nexts)
-      )
-      find_traceable_edges(LINE_RAISED, OFF_RAISED, inst.argval, is_req_)
-
-    elif op == END_FINALLY:
-      # The semantics of END_FINALLY are complicated.
-      # END_FINALLY can either reraise an exception,
-      # or in two cases continue execution to the next instruction:
-      # * a `with` __exit__ might return True, silencing an exception.
-      #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
-      # * TOS is None.
-      #   * TOS is never None for an exception compare, which always returns True/False.
-      #   * Beyond that, hard to say.
-      #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
-      dst = find_block_handler(inst, (SETUP_FINALLY,))
-      if dst:
-          find_traceable_edges(line, off, dst, is_req)
-          return
-      # TODO: handle WITH_CLEANUP_FINISH case.
-      if inst.is_exc_match_jmp_dst: # never steps to next because exception gets reraised.
-        return
-
-    elif op == RAISE_VARARGS:
-      dst = find_block_handler(inst, (SETUP_EXCEPT, SETUP_FINALLY))
-      if dst: find_traceable_edges(line, OFF_RAISED, dst, is_req)
-
-    # note: we currently use recursion to explore the control flow graph.
-    # this could hit the recursion limit for large code objects, and is probably slow.
-    # alternatively we could:
-    # * turn the second call into a fake tail call using a while loop around this whole function body;
-    # * use visit_nodes, which would break ordering of dbg output.
-    if op not in stop_opcodes: # normal interpreter step forward.
-      is_req_ = (
-        is_req and
-        op != END_FINALLY
-      )
-      find_traceable_edges(line, off, nexts[off].off, is_req_)
-    if op in jump_opcodes:
-      jmp = inst.argval # argval accounts for absolute vs relative offsets.
-      is_req_ = (
-        is_req and
-        not inst.is_exc_match_jmp_src
-      )
-      find_traceable_edges(line, off, jmp, is_req_)
-
-  for off in entry_offs:
-    find_traceable_edges(-1, -1, off, is_req=True)
+  for arc in chain(*arcs.values()):
+    lead_it = iter(arc)
+    next(lead_it)
+    for (prev, prev_line), (inst, line) in zip(arc, lead_it):
+      edge = (prev.off, inst.off, prev_line, line)
+      assert line > 0
+      is_opt = is_arc_opt(arc)
+      if dbg: err_edge(f'   {"opt" if is_opt else "req"}', edge, code)
+      (opt if is_opt else req).add(edge)
 
   return req, opt
 
 
-def err_inst(inst):
+def is_arc_opt(arc):
+  return (
+    is_arc_opt_SF_raise(arc) or
+    is_arc_unhandled_exc_reraise(arc) or
+    is_arc_exc_as_cleanup(arc)
+  )
+
+
+def err_inst(inst, prefix=''):
   op = inst.opcode
   line = inst.starts_line or ('^' if inst.is_line_start else '')
   off = inst.off
-  exc_match = ' '
-  if inst.is_exc_match_jmp_src: exc_match = '^' # jump.
-  if inst.is_exc_match_jmp_dst: exc_match = '_' # land.
+  sym = ' '
+  if inst.is_SF_exc_opt: sym = '~'
+  if inst.is_exc_match_jmp_src: sym = '^' # jump.
+  if inst.is_exc_match_jmp_dst: sym = '_' # land.
   dst = ('DST' if inst.is_jump_target else '   ')
   stop = 'stop' if op in stop_opcodes else '    '
   if op in jump_opcodes:
@@ -529,17 +565,17 @@ def err_inst(inst):
   else: target = ''
   stack = ''.join(push_abbrs[op] for op, _ in inst.stack)
   arg = f'to {inst.arg} (abs)' if inst.opcode in hasjabs else inst.argrepr
-  errSL(f'  line:{line:>4}  off:{off:>4} {dst:4} {exc_match} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
+  errSL(f'{prefix}  line:{line:>4}  off:{off:>4} {dst:4} {sym} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
 
 
-def find_block_handler(inst, match_ops):
+def find_block_handler(inst, insts, match_ops):
   for block_op, block_dst in reversed(inst.stack):
     if block_op in match_ops:
-      return block_dst
+      return insts[block_dst]
   return None
 
 
-def is_SETUP_FINALLY_exc_opt(inst, insts, nexts, path, code_name):
+def is_SETUP_FINALLY_exc_opt(inst, nxt, insts, path, code_name):
   '''
   Some SETUP_FINALLY imply a required exception edge, but others do not.
 
@@ -562,12 +598,10 @@ def is_SETUP_FINALLY_exc_opt(inst, insts, nexts, path, code_name):
 
   This heuristic attempts to detect TEF, as distinct from TF-TE.
   '''
-  next_inst = nexts[inst.off]
-  if next_inst.opcode == SETUP_EXCEPT:
-    # looks like TEF, but might be TF-TE.
-    # TODO: this heuristic may need work!
+  assert inst.opcode == SETUP_FINALLY
+  if nxt.opcode == SETUP_EXCEPT: # looks like TEF, but might be TF-TE.
     # Inspect the destination of nested SETUP_EXCEPT.
-    exc_dst_inst = insts[next_inst.argval]
+    exc_dst_inst = insts[nxt.argval]
     op = exc_dst_inst.opcode
     if op == DUP_TOP: return True # TEF; exception is optional.
     if op == POP_TOP: return False # TF-TE; exception is required.
@@ -591,6 +625,29 @@ def is_SETUP_FINALLY_dst_as_cleanup(inst, prevs, nexts):
       STORE_FAST,
       DELETE_FAST,
       END_FINALLY))
+
+
+def is_arc_opt_SF_raise(arc):
+  return arc[0][0] == _raised_inst and arc[1][0].is_SF_exc_opt
+
+
+def is_arc_unhandled_exc_reraise(arc):
+  return (
+    (arc[0][0].is_exc_match_jmp_src and arc[1][0].is_exc_match_jmp_dst) or
+    arc[0][0].is_exc_match_jmp_dst
+  )
+
+def is_arc_exc_as_cleanup(arc):
+  expected = (
+    (LOAD_CONST, None), # inst.
+    STORE_FAST,
+    DELETE_FAST,
+    END_FINALLY)
+  sub = arc[1:-1] #TODO: fix slice
+  if len(sub) != len(expected): return False
+  for (inst, line), exp in zip(sub, expected):
+    if not match_inst(inst, exp): return False
+  return True
 
 
 def match_insts(inst, prevs, nexts, exp_prev, expected):
@@ -946,6 +1003,9 @@ pop_block_opcodes = {
   POP_BLOCK,
   POP_EXCEPT,
 }
+
+arc_terminator_opcodes = stop_opcodes | jump_opcodes
+
 
 RST = '\x1b[0m'
 TXT_B = '\x1b[34m'
