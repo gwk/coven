@@ -350,7 +350,6 @@ def crawl_code_insts(path, code, dbg_name):
   nexts = {} # instructions to prev instruction.
   prevs = {} # instructions to next instruction.
   entry_insts = [] # crawl start points.
-  setup_finally_insts = []
 
   # Step 1: scan over instructions and assemble structure.
 
@@ -382,13 +381,13 @@ def crawl_code_insts(path, code, dbg_name):
       #^ This is good enough, since the instructions between the actual terminator and the destination
       #^ are concerned with block management.
 
-    if op in push_block_opcodes:
+    if op in setup_opcodes:
       dst = inst.argval
       assert all(dst < d for _, d in blocks)
       blocks.append((op, dst))
     enhance_inst(inst, off=off, line=line, is_line_start=is_line_start, stack=tuple(blocks))
     if op == EXTENDED_ARG:
-      if dbg: err_inst(inst)
+      #if dbg: err_inst(inst)
       continue
     ext = None
 
@@ -416,134 +415,139 @@ def crawl_code_insts(path, code, dbg_name):
     if off in exc_match_jmp_dsts:
       inst.is_exc_match_jmp_dst = True
 
-    if op == SETUP_FINALLY:
-      setup_finally_insts.append(inst)
-
     prev = inst
-    if dbg: err_inst(inst)
+    #if dbg: err_inst(inst)
 
-  # Addendum: annotate SETUP_FINALLY insts.
-  for inst in setup_finally_insts:
-    if is_SETUP_FINALLY_exc_opt(inst, nexts[inst], insts, path, name):
+  # Step 2: scan again to assemble dsts and add additional info.
+
+  dsts = defaultdict(set)
+
+  dsts[_begin_inst].update(entry_insts)
+
+  for inst in insts.values():
+    op = inst.opcode
+    if op in (OP_BEGIN, OP_RAISED): continue
+
+    if op == SETUP_FINALLY and is_SF_exc_opt(nexts[inst], insts, path, name):
       insts[inst.argval].is_SF_exc_opt = True
 
+    if op not in stop_opcodes:
+      dsts[inst].add(nexts[inst])
+
+    if op in jump_opcodes:
+      dsts[inst].add(insts[inst.argval])
+
+    if op in setup_exc_opcodes:
+      dsts[_raised_inst].add(insts[inst.argval])
+      #^ Enter the exception handler from an unknown exception source.
+      #^ This makes matching harder because while initial raises are labeled with src=OFF_RAISED,
+      #^ reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
+      #^ The solution is to use reduce_exc_edges().
+      # TODO: Perhaps it is possible to emit optional edges from reraising END_FINALLY?
+
+    if op == BREAK_LOOP:
+      dst_off = find_block_dst_off(inst, (SETUP_LOOP,))
+      if not dst: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
+      dsts[inst].add(insts[dst_off])
+
+    elif op == END_FINALLY:
+      # END_FINALLY can either reraise an exception,
+      # or in two cases continue execution to the next instruction:
+      # * a `with` __exit__ might return True, silencing an exception.
+      #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
+      # * TOS is None.
+      #   * TOS is never None for an exception compare, which always returns True/False.
+      #   * Beyond that, hard to say.
+      #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
+      # TODO: handle WITH_CLEANUP_FINISH case.
+      dst_off = find_block_dst_off(inst, (SETUP_FINALLY,))
+      if dst_off:
+        dsts[inst].add(insts[dst_off])
+      elif not inst.is_exc_match_jmp_dst:
+        #^ otherwise never steps to next because exception gets reraised.
+        dsts[inst].add(nexts[inst])
+
+    elif op == RAISE_VARARGS:
+      dst_off = find_block_dst_off(inst, (SETUP_EXCEPT, SETUP_FINALLY))
+      if dst_off: dsts[_raised_inst].add(insts[dst_off])
+
+
   # Step 2: find all arcs.
-  arcs = defaultdict(set)
+  starts_to_arcs = {} # maps first instructions to arcs.
 
-  def next_line(inst, line, nxt):
-    '''
-    Our interpretation of the line number tricks described in lnotabs_notes.txt.
-    Note: the last clause is not an lnotabs rule, but necessary for exception and yield resume edges. TODO: Still necessary?
-    '''
-    return nxt.line if (nxt.is_line_start or nxt.off < inst.off or line < 0) else line
-
-  def find_arcs(pairs):
-    prev_pair, (inst, line) = pairs
-    arc = [prev_pair]
-    dsts = []
-    ok_step_EF = True # special case for END_FINALLY.
+  def find_arcs(inst):
+    arc = []
     while True:
-      arc.append((inst, line))
-      op = inst.opcode
-
-      if op == BREAK_LOOP:
-        dst = find_block_handler(inst, insts, (SETUP_LOOP,))
-        if not dst: raise Exception(f'{path}:{line}: off:{off}; BREAK_LOOP stack has no SETUP_LOOP block')
-        dsts.append(((inst, line), (dst, next_line(inst, line, dst))))
-
-      elif op == FOR_ITER:
-        dst = insts[inst.argval]
-        dsts.append(((_raised_inst, line), (dst, next_line(inst, line, dst))))
-        #^ We might get a normal edge when the loop ends, or a StopIteration exception edge.
-        #^ Since reduce_edges can convert normal edges to exception edges, just emit the latter.
-        #^ Note: unlike other exception edges we specify line.
-        #^ This ensures that breaking edges get shown on the `for` loop line.
-
-      elif op in (SETUP_EXCEPT, SETUP_FINALLY):
-        dst = insts[inst.argval]
-        dsts.append(((_raised_inst, LINE_RAISED), (dst, dst.line)))
-        #^ Enter the exception handler from an unknown exception source.
-        #^ This makes matching harder because while we can trace raises with src=OFF_RAISED,
-        #^ reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
-        #^ The solution is to use reduce_exc_edges().
-        # TODO: revisit this. Either rely on reduce_exc_edges always and do not set off=OFF_RAISED in local tracer,
-        # or perhaps it is possible to emit optional edges from reraising END_FINALLY?
-
-      elif op == END_FINALLY:
-        # END_FINALLY can either reraise an exception,
-        # or in two cases continue execution to the next instruction:
-        # * a `with` __exit__ might return True, silencing an exception.
-        #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
-        # * TOS is None.
-        #   * TOS is never None for an exception compare, which always returns True/False.
-        #   * Beyond that, hard to say.
-        #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
-        # TODO: handle WITH_CLEANUP_FINISH case.
-        dst = find_block_handler(inst, insts, (SETUP_FINALLY,))
-        if dst:
-          dsts.append(((inst, line), (dst, next_line(inst, line, dst))))
-          break
-        if inst.is_exc_match_jmp_dst: # never steps to next because exception gets reraised.
-          ok_step_EF = False
-          break
-
-      elif op == RAISE_VARARGS:
-        dst = find_block_handler(inst, insts, (SETUP_EXCEPT, SETUP_FINALLY))
-        if dst: dsts.append(((_raised_inst, LINE_RAISED), (dst, dst.line)))
-
+      arc.append(inst)
       if inst.opcode in arc_terminator_opcodes:
         break
+      assert len(dsts[inst]) < 2
       nxt = nexts[inst]
       if nxt.is_jump_target:
         break
       inst = nxt
-      if inst.is_line_start or line < 0:
-        line = inst.line
+    a = tuple(arc)
+    assert a
+    assert a[0] not in starts_to_arcs
+    starts_to_arcs[a[0]] = a
+    return dsts[inst]
 
-    arcs[arc[0]].add(tuple(arc))
-
-    if inst.opcode not in stop_opcodes and ok_step_EF:
-      nxt = nexts[inst]
-      dsts.append(((inst, line), (nxt, next_line(inst, line, nxt))))
-    if inst.opcode in jump_opcodes:
-      dst = insts[inst.argval]
-      dsts.append(((inst, line), (dst, next_line(inst, line, dst))))
-    return dsts
-
-  start_pairs = [((_begin_inst, LINE_BEGIN), (inst, inst.line)) for inst in entry_insts]
-  visit_nodes(start_nodes=start_pairs, visitor=find_arcs)
-
-  def arc_offs(arc): return tuple(inst.off for inst, _ in arc)
+  visit_nodes(start_nodes=(dsts[_begin_inst] | dsts[_raised_inst]), visitor=find_arcs)
 
   if dbg:
-    for arc in sorted(chain(*arcs.values()), key=arc_offs):
-      errSL('Arc:', 'opt' if is_arc_opt(arc) else 'req')
-      for inst, line in arc:
-        err_inst(inst, prefix=f'{line:4}')
+    srcs = defaultdict(set)
+    for src, dst_set in dsts.items():
+      for dst in dst_set:
+        srcs[dst].add(src)
+    for arc in sorted(starts_to_arcs.values(), key=arc_key):
+      src_offs = sorted(inst.off for inst in srcs[arc[0]])
+      dst_offs = sorted(inst.off for inst in dsts[arc[-1]])
+      errSL('arc:', src_offs, '=->', dst_offs)
+      for inst in arc:
+        err_inst(inst)
 
-  # Step 3: emit edges for each arc.
+  # Step 3: emit edges for each arc, taking care to represent lines as they will be traced.
   req = set()
   opt = set()
+  def add_edge(edge, is_opt):
+    if dbg: err_edge(f'   {"opt" if is_opt else "req"}', edge, code)
+    (opt if is_opt else req).add(edge)
 
-  for arc in chain(*arcs.values()):
-    lead_it = iter(arc)
-    next(lead_it)
-    for (prev, prev_line), (inst, line) in zip(arc, lead_it):
-      edge = (prev.off, inst.off, prev_line, line)
-      assert line > 0
-      is_opt = is_arc_opt(arc)
-      if dbg: err_edge(f'   {"opt" if is_opt else "req"}', edge, code)
-      (opt if is_opt else req).add(edge)
+  def emit_edges(pair):
+    src, src_line = pair
+    for start in dsts[src]:
+      arc = starts_to_arcs[start]
+      is_opt = is_arc_opt(src, arc)
+      prev_line = src_line
+      for prev, inst in zip((src,) + arc, arc):
+        line = next_line(prev, inst, prev_line)
+        assert line > 0
+        prev_off = prev.off
+        if src == prev and src.opcode == FOR_ITER and src.argval == inst.off:
+          #^ We might get a normal edge when the loop ends, or a StopIteration exception edge.
+          #^ The StopIteration exception lands at the FOR_ITER dst, not the SETUP_LOOP dst.
+          #^ This is why setup_exc_opcodes excludes SETUP_LOOP; it's not the actual destination.
+          #^ Since reduce_edges can convert normal edges to exception edges, just emit the latter,
+          #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
+          prev_off = OFF_RAISED
+        add_edge((prev_off, inst.off, prev_line, line), is_opt)
+        prev_line = line
+      yield (inst, line)
+
+  visit_nodes(start_nodes=[(_begin_inst, LINE_BEGIN), (_raised_inst, LINE_RAISED)], visitor=emit_edges)
 
   return req, opt
 
 
-def is_arc_opt(arc):
-  return (
-    is_arc_opt_SF_raise(arc) or
-    is_arc_unhandled_exc_reraise(arc) or
-    is_arc_exc_as_cleanup(arc)
-  )
+def arc_key(arc): return tuple(inst.off for inst in arc)
+
+
+def next_line(inst, nxt, line):
+  '''
+  Our interpretation of the line number tricks described in lnotabs_notes.txt.
+  Note: the last clause is not an lnotabs rule, but necessary for exception and yield resume edges.
+  '''
+  return nxt.line if (nxt.is_line_start or nxt.off < inst.off or line < 0) else line
 
 
 def err_inst(inst, prefix=''):
@@ -558,7 +562,7 @@ def err_inst(inst, prefix=''):
   stop = 'stop' if op in stop_opcodes else '    '
   if op in jump_opcodes:
     target = f'jump {inst.argval:4}'
-  elif op in push_block_opcodes:
+  elif op in setup_opcodes:
     target = f'push {inst.argval:4}'
   else: target = ''
   stack = ''.join(push_abbrs[op] for op, _ in inst.stack)
@@ -566,14 +570,14 @@ def err_inst(inst, prefix=''):
   errSL(f'{prefix}  line:{line:>4}  off:{off:>4} {dst:4} {sym} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
 
 
-def find_block_handler(inst, insts, match_ops):
-  for block_op, block_dst in reversed(inst.stack):
+def find_block_dst_off(inst, match_ops):
+  for block_op, dst_off in reversed(inst.stack):
     if block_op in match_ops:
-      return insts[block_dst]
+      return dst_off
   return None
 
 
-def is_SETUP_FINALLY_exc_opt(inst, nxt, insts, path, code_name):
+def is_SF_exc_opt(nxt, insts, path, code_name):
   '''
   Some SETUP_FINALLY imply a required exception edge, but others do not.
 
@@ -596,7 +600,6 @@ def is_SETUP_FINALLY_exc_opt(inst, nxt, insts, path, code_name):
 
   This heuristic attempts to detect TEF, as distinct from TF-TE.
   '''
-  assert inst.opcode == SETUP_FINALLY
   if nxt.opcode == SETUP_EXCEPT: # looks like TEF, but might be TF-TE.
     # Inspect the destination of nested SETUP_EXCEPT.
     exc_dst_inst = insts[nxt.argval]
@@ -607,59 +610,47 @@ def is_SETUP_FINALLY_exc_opt(inst, nxt, insts, path, code_name):
   return False
 
 
-def is_SETUP_FINALLY_dst_as_cleanup(inst, prevs, nexts):
+def is_arc_opt(src, arc):
+  return (
+    is_arc_opt_SF_raise(src, arc) or
+    is_arc_unhandled_exc_reraise(src, arc) or
+    is_arc_exc_as_cleanup(src, arc)
+  )
+
+
+def is_arc_opt_SF_raise(src, arc):
+  return src == _raised_inst and arc[0].is_SF_exc_opt
+
+
+def is_arc_unhandled_exc_reraise(src, arc):
+  '''
+  Track jumps predicated on a preceding COMPARE_OP performing 'exception match'.
+  The failure branch treated as optional, because all possible exceptions are not usually covered.
+  '''
+  return (
+    (src.is_exc_match_jmp_src and arc[0].is_exc_match_jmp_dst) or
+    src.is_exc_match_jmp_dst
+  )
+
+
+def is_arc_exc_as_cleanup(src, arc):
   '''
   CPython's compile.c:compiler_try_except emits a nested SETUP_FINALLY for `except _ as <name>`,
   and generates finally code to delete <name>.
-  This instruction sequence appears easy to recognize, but is just a heuristic that may fail.
+  This instruction sequence is easy to recognize, but is just a heuristic that may fail.
+  Note: for further discrimination, the final three instructions in the preceding block are:
+    POP_BLOCK,
+    POP_EXCEPT,
+    (LOAD_CONST, None).
   '''
-  return match_insts(inst, prevs, nexts,
-    exp_prev=(
-      POP_BLOCK,
-      POP_EXCEPT,
-      (LOAD_CONST, None)),
-    expected=(
-      (LOAD_CONST, None), # inst.
-      STORE_FAST,
-      DELETE_FAST,
-      END_FINALLY))
-
-
-def is_arc_opt_SF_raise(arc):
-  return arc[0][0] == _raised_inst and arc[1][0].is_SF_exc_opt
-
-
-def is_arc_unhandled_exc_reraise(arc):
-  return (
-    (arc[0][0].is_exc_match_jmp_src and arc[1][0].is_exc_match_jmp_dst) or
-    arc[0][0].is_exc_match_jmp_dst
-  )
-
-def is_arc_exc_as_cleanup(arc):
+  if src != _raised_inst: return False
   expected = (
-    (LOAD_CONST, None), # inst.
+    (LOAD_CONST, None),
     STORE_FAST,
     DELETE_FAST,
     END_FINALLY)
-  sub = arc[1:-1] #TODO: fix slice
-  if len(sub) != len(expected): return False
-  for (inst, line), exp in zip(sub, expected):
-    if not match_inst(inst, exp): return False
-  return True
-
-
-def match_insts(inst, prevs, nexts, exp_prev, expected):
-  p = prevs[inst]
-  for exp in reversed(exp_prev):
-    if not match_inst(p, exp): return False
-    try: p = prevs[p]
-    except KeyError: return False
-  n = inst
-  for exp in expected:
-    if not match_inst(n, exp): return False
-    try: n = nexts[n]
-    except KeyError: return False
-  return True
+  if len(arc) != len(expected): return False
+  return all(match_inst(*p) for p in zip(arc, expected))
 
 
 def match_inst(inst, exp):
@@ -898,6 +889,8 @@ def fmt_edge(edge, code):
 
 def errSL(*items): print(*items, file=stderr)
 
+def errLSSL(*items): print(*items, sep='\n  ', file=stderr)
+
 
 def err_edge(label, edge, code, *tail):
   errSL(label, fmt_edge(edge, code), *tail)
@@ -949,9 +942,9 @@ YIELD_FROM            = opmap['YIELD_FROM']
 YIELD_VALUE           = opmap['YIELD_VALUE']
 
 # `hasjrel` includes the SETUP_* ops, which do not actually branch on execution.
-# FOR_ITER is also omitted because we handle it manually.
 jump_opcodes = {
   CONTINUE_LOOP,
+  FOR_ITER,
   JUMP_ABSOLUTE,
   JUMP_IF_FALSE_OR_POP,
   JUMP_IF_TRUE_OR_POP,
@@ -964,6 +957,7 @@ jump_opcodes = {
 stop_opcodes = {
   BREAK_LOOP,
   CONTINUE_LOOP,
+  END_FINALLY, # this can sometimes advance; handled manually.
   JUMP_ABSOLUTE,
   JUMP_FORWARD,
   RAISE_VARARGS,
@@ -978,13 +972,21 @@ return_opcodes = {
   YIELD_VALUE,
 }
 
-# These codes push a block that specifies a jump destination for pop instructions.
-push_block_opcodes = {
+# These codes push a block that specifies a block destination.
+setup_opcodes = {
   SETUP_ASYNC_WITH,
   SETUP_EXCEPT,
   SETUP_FINALLY,
   SETUP_LOOP,
   SETUP_WITH,
+}
+
+# These codes expect an exception edge that lands at the block destination.
+setup_exc_opcodes = {
+  SETUP_ASYNC_WITH,
+  SETUP_EXCEPT,
+  SETUP_FINALLY,
+  SETUP_WITH
 }
 
 push_abbrs = {
