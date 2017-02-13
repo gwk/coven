@@ -510,8 +510,8 @@ def crawl_code_insts(path, code, dbg_name):
     if dbg: err_edge(f'   {"opt" if is_opt else "req"}', edge, code)
     (opt if is_opt else req).add(edge)
 
-  def emit_edges(pair):
-    src, src_line = pair
+  def emit_edges(triple):
+    src, src_line, is_src_opt = triple
     for start in dsts[src]:
       arc = starts_to_arcs[start]
       is_opt = is_arc_opt(src, arc)
@@ -527,11 +527,12 @@ def crawl_code_insts(path, code, dbg_name):
           #^ Since reduce_edges can convert normal edges to exception edges, just emit the latter,
           #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
           prev_off = OFF_RAISED
-        add_edge((prev_off, inst.off, prev_line, line), is_opt)
+        edge = (prev_off, inst.off, prev_line, line)
+        add_edge(edge, (is_opt or (is_src_opt and src == prev)))
         prev_line = line
-      yield (inst, line)
+      yield (inst, line, is_opt)
 
-  visit_nodes(start_nodes=[(_begin_inst, LINE_BEGIN), (_raised_inst, LINE_RAISED)], visitor=emit_edges)
+  visit_nodes(start_nodes=[(_begin_inst, LINE_BEGIN, False), (_raised_inst, LINE_RAISED, False)], visitor=emit_edges)
 
   return req, opt
 

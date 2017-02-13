@@ -1,0 +1,13 @@
+----------------
+Coverage Report:
+
+__main__: test/exc-TA-ret_{}.py:
+   8
+   9   def top(arg):
+  10     try:
+  11       try_(arg)
+  12 !   except E1 as e1:
+  13 !     return True
+  14     return False
+
+__main__: test/exc-TA-ret_{}.py: 16 lines; 7 trivial; 9 traceable; 7 covered; 0 ignored; 0 ignored but covered; 2 not covered.
