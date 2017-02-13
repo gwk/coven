@@ -451,16 +451,19 @@ def crawl_code_insts(path, code, dbg_name):
       dsts[inst].add(insts[dst_off])
 
     elif op == END_FINALLY:
-      # END_FINALLY can either reraise an exception,
-      # or in two cases continue execution to the next instruction:
+      # END_FINALLY can either reraise an exception, or advance to the next instruction.
+      # It advances in just two cases:
       # * a `with` __exit__ might return True, silencing an exception.
       #   In this case END_FINALLY is always preceded by WITH_CLEANUP_FINISH.
       # * TOS is None.
-      #   * TOS is never None for an exception compare, which always returns True/False.
-      #   * Beyond that, hard to say.
-      #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
+      # This does not appear sufficient for static analysis; I got only as far as:
+      # * TOS is never None for an exception compare, which always returns True/False.
+      # * In compilation of SETUP_FINALLY, a None is pushed,
+      #   but I'm not sure that it is always TOS when END_FINALLY is reached.
       dst_off = find_block_dst_off(inst, (SETUP_FINALLY,))
       if dst_off:
+        # assume that END_FINALLY inside of SETUP_FINALLY block never advances.
+        # TODO: justify this reasoning.
         dsts[inst].add(insts[dst_off])
       elif not inst.is_exc_match_jmp_dst:
         #^ otherwise never steps to next because exception gets reraised.
