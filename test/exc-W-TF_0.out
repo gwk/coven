@@ -1,0 +1,12 @@
+----------------
+Coverage Report:
+
+__main__: test/exc-W-TF_{}.py:
+   4     with CM(False):
+   5       try:
+   6         return try_(arg)
+   7       finally:
+   8 %       return None
+   9
+
+__main__: test/exc-W-TF_{}.py: 10 lines; 3 trivial; 7 traceable; 6 covered; 0 ignored; 0 ignored but covered; 1 not covered.

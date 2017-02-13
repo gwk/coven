@@ -1,0 +1,13 @@
+----------------
+Coverage Report:
+
+__main__: test/exc-W-TX_{}.py:
+   3   def top(arg):
+   4     with CM(False):
+   5       try:
+   6         return try_(arg)
+   7 !     except:
+   8 !       return None
+   9
+
+__main__: test/exc-W-TX_{}.py: 10 lines; 2 trivial; 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.

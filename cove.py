@@ -473,6 +473,10 @@ def crawl_code_insts(path, code, dbg_name):
       dst_off = find_block_dst_off(inst, (SETUP_EXCEPT, SETUP_FINALLY))
       if dst_off: dsts[_raised_inst].add(insts[dst_off])
 
+    elif op == RETURN_VALUE:
+      dst_off = find_block_dst_off(inst, (SETUP_ASYNC_WITH, SETUP_FINALLY, SETUP_WITH))
+      if dst_off: dsts[inst].add(insts[dst_off])
+
   srcs = defaultdict(set)
   for src, dst_set in dsts.items():
     for dst in dst_set:
@@ -530,6 +534,12 @@ def crawl_code_insts(path, code, dbg_name):
           #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
           prev_off = OFF_RAISED
         edge = (prev_off, inst.off, prev_line, line)
+        if is_opt:
+          pass # TODO: switch back to required when we see "content" instructions.
+        else:
+          if prev.opcode == END_FINALLY and nexts[prev] == inst:
+            # Because END_FINALLY is so hard to analyze, for now we treat any step to next as optional.
+            is_opt = True
         add_edge(edge, (is_opt or (is_src_opt and src == prev)))
         prev_line = line
       yield (inst, line, is_opt)
@@ -561,8 +571,10 @@ def err_inst(inst, prefix=''):
   if inst.is_exc_match_jmp_src: sym = '^' # jump.
   if inst.is_exc_match_jmp_dst: sym = '_' # land.
   dst = ('DST' if inst.is_jump_target else '   ')
-  stop = 'stop' if op in stop_opcodes else '    '
-  if op == END_FINALLY: stop = 'end?'
+  if op == END_FINALLY:     stop = 'end?'
+  elif op == RETURN_VALUE:  stop = 'ret?'
+  elif op in stop_opcodes:  stop = 'stop'
+  else: stop = '    '
   if op in jump_opcodes:
     target = f'jump {inst.argval:4}'
   elif op in setup_opcodes:
