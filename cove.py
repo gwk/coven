@@ -100,9 +100,9 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   target_paths = gen_target_paths(targets, cmd_head, dbg=args.dbg)
   if output_path:
     write_coverage(output_path=output_path, target_paths=target_paths, code_edges=code_edges)
-    exit(exit_code) # TODO: move out of if?
   else:
     report(target_paths=target_paths, code_edges=code_edges, args=args)
+  exit(exit_code)
 
 
 def scrub_traceback(tbe):
