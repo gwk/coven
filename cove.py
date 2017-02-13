@@ -560,6 +560,7 @@ def err_inst(inst, prefix=''):
   if inst.is_exc_match_jmp_dst: sym = '_' # land.
   dst = ('DST' if inst.is_jump_target else '   ')
   stop = 'stop' if op in stop_opcodes else '    '
+  if op == END_FINALLY: stop = 'end?'
   if op in jump_opcodes:
     target = f'jump {inst.argval:4}'
   elif op in setup_opcodes:
