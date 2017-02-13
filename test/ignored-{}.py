@@ -8,15 +8,15 @@ def top(on):
     multi(on)
     partial(on)
 
-def inline(on): return on if on else None #no-cov!
+def inline(on): return on if on else None #!cov-ignore.
 
 def multi(on):
-  if on: #no-cov!
+  if on: #!cov-ignore.
     return on
-  return None #no-cov!
+  return None #!cov-ignore.
 
 def partial(on):
-  if on: #no-cov!
+  if on: #!cov-ignore.
     return on
   return None # never covered; this test assures that previous annotation is terminated.
 

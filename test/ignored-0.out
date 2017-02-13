@@ -12,15 +12,15 @@ __main__: test/ignored-{}.py:
    8 !     multi(on)
    9 !     partial(on)
   10
-  11 | def inline(on): return on if on else None #no-cov!
+  11 | def inline(on): return on if on else None #!cov-ignore.
   12
   13   def multi(on):
-  14 |   if on: #no-cov!
+  14 |   if on: #!cov-ignore.
   15 |     return on
-  16 |   return None #no-cov!
+  16 |   return None #!cov-ignore.
   17
   18   def partial(on):
-  19 |   if on: #no-cov!
+  19 |   if on: #!cov-ignore.
   20 |     return on
   21 !   return None # never covered; this test assures that previous annotation is terminated.
   22
