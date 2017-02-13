@@ -437,12 +437,12 @@ def crawl_code_insts(path, code, dbg_name):
     if op in jump_opcodes:
       dsts[inst].add(insts[inst.argval])
 
-    if op in setup_exc_opcodes:
+    elif op in setup_exc_opcodes:
       dsts[_raised_inst].add(insts[inst.argval])
       #^ Enter the exception handler from an unknown exception source.
       #^ This makes matching harder because while initial raises are labeled with src=OFF_RAISED,
       #^ reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
-      #^ The solution is to use reduce_exc_edges().
+      #^ The solution is to use reduce_edges().
       # TODO: Perhaps it is possible to emit optional edges from reraising END_FINALLY?
 
     if op == BREAK_LOOP:
