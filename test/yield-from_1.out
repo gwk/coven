@@ -1,12 +1,18 @@
-0 1
 ----------------
 Coverage Report:
 
 __main__: test/yield-from_{}.py:
-   1   from sys import argv
+   1   from exc import *
    2
-   3   def yield_(stop):
-   4 %   for i in range(2):
-   5       if i == stop: break
+   3   def gen():
+   4 %   for i in range(1):
+   5 %     yield i
+   6
+   7   def yield_from_range():
+   8 %   yield from range(1)
+   9
+  10   def yield_from_gen():
+  11 %   yield from gen()
+  12
 
-__main__: test/yield-from_{}.py: 11 lines; 3 trivial; 8 traceable; 7 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: test/yield-from_{}.py: 19 lines; 5 trivial; 14 traceable; 9 covered; 1 ignored; 0 ignored but covered; 4 not covered.

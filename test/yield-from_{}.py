@@ -1,11 +1,19 @@
-from sys import argv
+from exc import *
 
-def yield_(stop):
-  for i in range(2):
-    if i == stop: break
-    yield from range(2)
+def gen():
+  for i in range(1):
+    yield i
+
+def yield_from_range():
+  yield from range(1)
+
+def yield_from_gen():
+  yield from gen()
 
 def top(arg):
-  print(*yield_(arg))
+  yfr = yield_from_range()
+  yfg = yield_from_gen()
+  for i in range(arg):
+    assert next(yfr, None) == next(yfg, None)
 
-for a in argv[1]: top(int(a))
+handle_args(top)

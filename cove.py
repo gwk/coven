@@ -349,7 +349,6 @@ def crawl_code_insts(path, code, dbg_name):
   insts = { OFF_BEGIN : _begin_inst, OFF_RAISED : _raised_inst } # offsets (accounting for EXTENDED_ARG) to Instructions.
   nexts = {} # instructions to prev instruction.
   prevs = {} # instructions to next instruction.
-  entry_insts = [] # crawl start points.
 
   # Step 1: scan raw instructions and assemble structure.
 
@@ -395,15 +394,6 @@ def crawl_code_insts(path, code, dbg_name):
     nexts[prev] = inst
     prevs[inst] = prev
 
-    if off == 0:
-      entry_insts.append(inst)
-
-    if prev.opcode == YIELD_VALUE:
-      entry_insts.append(inst)
-
-    if op == YIELD_FROM:
-      entry_insts.append(inst)
-
     if op == COMPARE_OP and inst.argrepr == 'exception match':
       # This instruction is doing an exception match,
       # which will lead to a jump that results in the exception getting reraised.
@@ -422,11 +412,21 @@ def crawl_code_insts(path, code, dbg_name):
 
   dsts = defaultdict(set)
 
-  dsts[_begin_inst].update(entry_insts)
-
   for inst in insts.values():
     op = inst.opcode
     if op in (OP_BEGIN, OP_RAISED): continue
+
+    if inst.off == 0:
+      dsts[_begin_inst].add(inst)
+
+    if op == YIELD_VALUE:
+      dsts[_begin_inst].add(nexts[inst])
+
+    if op == YIELD_FROM:
+      dsts[_begin_inst].add(inst)
+      dsts[_raised_inst].add(nexts[inst])
+      #^ Use the same hack as FOR_ITER to accommodate generators that emit raise instead of advance.
+      #^ See emit_edges for explanation.
 
     if op == SETUP_FINALLY and is_SF_exc_opt(nexts[inst], insts, path, name):
       insts[inst.argval].is_SF_exc_opt = True
@@ -526,7 +526,8 @@ def crawl_code_insts(path, code, dbg_name):
           #^ We might get a normal edge when the loop ends, or a StopIteration exception edge.
           #^ The StopIteration exception lands at the FOR_ITER dst, not the SETUP_LOOP dst.
           #^ This is why setup_exc_opcodes excludes SETUP_LOOP; it's not the actual destination.
-          #^ Since reduce_edges can convert normal edges to exception edges, just emit the latter,
+          #^ Since reduce_edges can convert traced normal edges to expected exception edges,
+          #^ emit an exception edge here to cover both cases,
           #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
           prev_off = OFF_RAISED
         edge = (prev_off, inst.off, prev_line, line)
@@ -989,6 +990,7 @@ stop_opcodes = {
   RAISE_VARARGS,
   RETURN_VALUE,
   YIELD_VALUE,
+  YIELD_FROM,
 }
 
 # the following opcodes trigger 'return' events.

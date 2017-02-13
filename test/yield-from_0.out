@@ -1,0 +1,23 @@
+----------------
+Coverage Report:
+
+__main__: test/yield-from_{}.py:
+   1   from exc import *
+   2
+   3   def gen():
+   4 !   for i in range(1):
+   5 !     yield i
+   6
+   7   def yield_from_range():
+   8 !   yield from range(1)
+   9
+  10   def yield_from_gen():
+  11 !   yield from gen()
+  12
+  13   def top(arg):
+  14     yfr = yield_from_range()
+  15     yfg = yield_from_gen()
+  16 %   for i in range(arg):
+  17 |     assert next(yfr, None) == next(yfg, None)
+
+__main__: test/yield-from_{}.py: 19 lines; 5 trivial; 14 traceable; 8 covered; 1 ignored; 0 ignored but covered; 5 not covered.
