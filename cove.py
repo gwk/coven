@@ -537,6 +537,8 @@ def crawl_code_insts(path, code, dbg_name):
   return req, opt
 
 
+def inst_key(inst): return inst.off
+
 def arc_key(arc): return tuple(inst.off for inst in arc)
 
 
