@@ -459,7 +459,6 @@ def crawl_code_insts(path, code, dbg_name):
       #   * TOS is never None for an exception compare, which always returns True/False.
       #   * Beyond that, hard to say.
       #   * In compilation of SETUP_FINALLY, a None is pushed, but might not remain as TOS.
-      # TODO: handle WITH_CLEANUP_FINISH case.
       dst_off = find_block_dst_off(inst, (SETUP_FINALLY,))
       if dst_off:
         dsts[inst].add(insts[dst_off])
@@ -615,7 +614,8 @@ def is_arc_opt(src, arc):
   return (
     is_arc_opt_SF_raise(src, arc) or
     is_arc_unhandled_exc_reraise(src, arc) or
-    is_arc_exc_as_cleanup(src, arc)
+    is_arc_exc_as_cleanup(src, arc) or
+    is_arc_with_cleanup(src, arc)
   )
 
 
@@ -644,14 +644,27 @@ def is_arc_exc_as_cleanup(src, arc):
     POP_EXCEPT,
     (LOAD_CONST, None).
   '''
-  if src != _raised_inst: return False
-  expected = (
+  return src == _raised_inst and match_insts(arc, (
     (LOAD_CONST, None),
     STORE_FAST,
     DELETE_FAST,
-    END_FINALLY)
-  if len(arc) < len(expected): return False
-  return all(match_inst(*p) for p in zip(arc, expected))
+    END_FINALLY))
+
+
+def is_arc_with_cleanup(src, arc):
+  '''
+  With statements do not typically get the exception case exercised.
+  TODO: this heuristic may need to be broadened.
+  '''
+  return match_insts(arc, (
+    WITH_CLEANUP_START,
+    WITH_CLEANUP_FINISH,
+    END_FINALLY))
+
+
+def match_insts(insts, exps):
+  if len(insts) < len(exps): return False
+  return all(match_inst(*p) for p in zip(insts, exps))
 
 
 def match_inst(inst, exp):
@@ -939,6 +952,8 @@ POP_TOP               = opmap['POP_TOP']
 RAISE_VARARGS         = opmap['RAISE_VARARGS']
 RETURN_VALUE          = opmap['RETURN_VALUE']
 STORE_FAST            = opmap['STORE_FAST']
+WITH_CLEANUP_FINISH   = opmap['WITH_CLEANUP_FINISH']
+WITH_CLEANUP_START    = opmap['WITH_CLEANUP_START']
 YIELD_FROM            = opmap['YIELD_FROM']
 YIELD_VALUE           = opmap['YIELD_VALUE']
 
