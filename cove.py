@@ -460,14 +460,10 @@ def crawl_code_insts(path, code, dbg_name):
       # * TOS is never None for an exception compare, which always returns True/False.
       # * In compilation of SETUP_FINALLY, a None is pushed,
       #   but I'm not sure that it is always TOS when END_FINALLY is reached.
-      dst_off = find_block_dst_off(inst, (SETUP_FINALLY,))
+      # For now, we just assume it can always advance, and add the jump dst where applicable.
+      dst_off = find_block_dst_off(inst, (SETUP_ASYNC_WITH, SETUP_FINALLY, SETUP_WITH))
       if dst_off:
-        # assume that END_FINALLY inside of SETUP_FINALLY block never advances.
-        # TODO: justify this reasoning.
         dsts[inst].add(insts[dst_off])
-      elif not inst.is_exc_match_jmp_dst:
-        #^ otherwise never steps to next because exception gets reraised.
-        dsts[inst].add(nexts[inst])
 
     elif op == RAISE_VARARGS:
       dst_off = find_block_dst_off(inst, (SETUP_EXCEPT, SETUP_FINALLY))
@@ -988,7 +984,6 @@ jump_opcodes = {
 stop_opcodes = {
   BREAK_LOOP,
   CONTINUE_LOOP,
-  END_FINALLY, # this can sometimes advance; handled manually.
   JUMP_ABSOLUTE,
   JUMP_FORWARD,
   RAISE_VARARGS,
