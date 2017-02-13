@@ -833,13 +833,12 @@ def report_path(target, path, coverage, totals, args):
         else: assert line in covered_lines
       print(f'{TXT_D1}{line:4} {color}{sym} {text}{RST1}'.rstrip())
       if args.dbg and needs_dbg:
-        suffix = f'required:{len(required)} optional:{len(optional)} traced:{len(traced)}.'
-        print(f'     {TXT_B1}^ {suffix}{RST1}')
+        #print(f'     {TXT_B1}^ required:{len(required)} optional:{len(optional)} traced:{len(traced)}.{RST1}')
         possible = required | optional
-        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}-', required - traced)
-        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}o', optional - traced)
-        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}=', possible & traced)
-        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}+', traced - possible)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}-', required - traced, args.dbg)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}o', optional - traced, args.dbg)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}=', possible & traced, args.dbg)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}+', traced - possible, args.dbg)
   stats.describe(label, c)
 
 
@@ -921,9 +920,10 @@ def err_edge(label, edge, code, *tail):
   errSL(label, fmt_edge(edge, code), *tail)
 
 
-def err_cov_set(label, cov_set):
+def err_cov_set(label, cov_set, dbg_name):
   for src, dst, code in sorted(cov_set, key=lambda t: (t[2].co_name, t[0], t[1])):
-    errSL(f'{label} {src:4} -> {dst:4}  {code.co_name}')
+    if not dbg_name or dbg_name == code.co_name:
+      errSL(f'{label} {src:4} -> {dst:4}  {code.co_name}')
 
 
 # Opcode information.
