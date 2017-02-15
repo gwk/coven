@@ -3,7 +3,7 @@
 from setuptools import setup
 
 
-name = 'cove-tool'
+name = 'coven'
 
 setup(
   name=name,
@@ -12,11 +12,11 @@ setup(
   author='George King',
   author_email='george.w.king@gmail.com',
   url='https://github.com/gwk/' + name,
-  description='Cove is a code coverage tracing harness.',
+  description='Coven is a code coverage tracing harness.',
   long_description=open('readme.wu').read(),
-  py_modules=['cove'],
+  py_modules=[name],
   entry_points = {'console_scripts': [
-    'cove=cove:main',
+    'coven=coven:main',
   ]},
   install_requires=[
     'pithy'

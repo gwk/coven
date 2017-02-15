@@ -1,4 +1,4 @@
 {
-  'interpreter': '$PROJ/cove.py',
+  'interpreter': '$PROJ/coven.py',
   'env': { 'PYTHONPATH' : '$PROJ/test' },
 }

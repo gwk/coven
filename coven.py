@@ -20,7 +20,7 @@ from types import CodeType
 
 
 def main():
-  arg_parser = ArgumentParser(description='cove: code coverage harness.')
+  arg_parser = ArgumentParser(description='coven: code coverage harness.')
   arg_parser.add_argument('-targets', nargs='*', default=[])
   arg_parser.add_argument('-dbg')
   arg_parser.add_argument('-show-all', action='store_true')
@@ -65,7 +65,7 @@ def expand_module_path(path):
 
 
 def trace_cmd(cmd, arg_targets, output_path, args):
-  'NOTE: this must be called before importing any module that we might wish to trace with cove.'
+  'NOTE: this must be called before importing any module that we might wish to trace with coven.'
   cmd_head = abs_path(cmd[0])
   targets = set(arg_targets or ['__main__'])
   # although run_path alters and restores sys.argv[0],
@@ -78,17 +78,17 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   sys.path[0] = os.path.dirname(cmd[0]) # not sure if this is right in all cases.
   exit_code = 0
   code_edges = install_trace(targets, dbg=args.dbg)
-  #if dbg: errSL('cove untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()))
+  #if dbg: errSL('coven untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()))
   try:
     run_path(cmd_head, run_name='__main__')
   except FileNotFoundError as e:
-    exit(f'cove error: could not find command to run: {cmd_head!r}')
+    exit(f'coven error: could not find command to run: {cmd_head!r}')
   except SystemExit as e:
     exit_code = e.code
   except BaseException:
     from traceback import TracebackException
     exit_code = 1 # exit code that Python returns when an exception raises to toplevel.
-    # format the traceback exactly as it would appear when run without cove.
+    # format the traceback exactly as it would appear when run without coven.
     tbe = TracebackException(*exc_info())
     scrub_traceback(tbe)
     print(*tbe.format(), sep='', end='', file=stderr)
@@ -106,13 +106,13 @@ def trace_cmd(cmd, arg_targets, output_path, args):
 
 
 def scrub_traceback(tbe):
-  'Remove frames from TracebackException object that refer to cove, rather than the child process under examination.'
+  'Remove frames from TracebackException object that refer to coven, rather than the child process under examination.'
   stack = tbe.stack # StackSummary is a subclass of list.
-  if not stack or 'cove' not in stack[0].filename: return # not the root exception.
+  if not stack or 'coven' not in stack[0].filename: return # not the root exception.
   #^ TODO: verify that the above is sufficiently strict,
   #^ while also covering both the installed entry_point and the local dev cases.
   del stack[0]
-  while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove cove runpy.run_path frames.
+  while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove coven runpy.run_path frames.
 
 
 # Fake instruction/line offsets.
@@ -122,7 +122,7 @@ LINE_RETURN = OFF_RETURN = OP_RETURN = -3
 
 
 def install_trace(targets, dbg):
-  'NOTE: this must be called before importing any module that we might wish to trace with cove.'
+  'NOTE: this must be called before importing any module that we might wish to trace with coven.'
 
   code_edges = defaultdict(set)
   file_name_filter = {}
@@ -131,7 +131,7 @@ def install_trace(targets, dbg):
     module = getmodule(code)
     if dbg:
       stderr.flush()
-      errSL('cove.is_code_path_targeted: {}:{} -> {} -> {}'.format(
+      errSL('coven.is_code_path_targeted: {}:{} -> {} -> {}'.format(
         code.co_filename, code.co_name, module and module.__name__,
         (module and module.__name__) in targets))
     if module is None: return False # probably a python builtin; not traceable.
@@ -196,7 +196,7 @@ def gen_target_paths(targets, cmd_head, dbg):
   '''
   target_paths = {}
   for target in targets:
-    if target == '__main__': # sys.modules['__main__'] points to cove; we want cmd_head.
+    if target == '__main__': # sys.modules['__main__'] points to coven; we want cmd_head.
       target_paths['__main__'] = {cmd_head}
     else:
       try: module = sys.modules[target]
@@ -225,7 +225,7 @@ def coalesce(trace_paths, arg_targets, args):
   for trace_path in trace_paths:
     try: f = open(trace_path, 'rb')
     except FileNotFoundError:
-      exit(f'cove error: trace file not found: {trace_path}')
+      exit(f'coven error: trace file not found: {trace_path}')
     with f: data = marshal.load(f)
     target_paths = data['target_paths']
     code_edges = data['code_edges']
@@ -618,7 +618,7 @@ def is_SF_exc_opt(nxt, insts, path, code_name):
     op = exc_dst_inst.opcode
     if op == DUP_TOP: return True # TEF; exception is optional.
     if op == POP_TOP: return False # TF-TE; exception is required.
-    errSL(f'cove WARNING: is_SETUP_FINALLY_exc_opt: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
+    errSL(f'coven WARNING: is_SETUP_FINALLY_exc_opt: {path}:{code_name}: heuristic failed on exc_dst_inst opcode: {exc_dst_inst}')
   return False
 
 
