@@ -1,5 +1,5 @@
 
-from exc import *
+from fixtures import *
 
 def top(arg):
   try:

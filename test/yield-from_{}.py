@@ -1,4 +1,4 @@
-from exc import *
+from fixtures import *
 
 def gen():
   for i in range(1):

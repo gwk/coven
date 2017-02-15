@@ -1,8 +1,8 @@
 ----------------
 Coverage Report:
 
-__main__: test/yield-from_{}.py:
-   1   from exc import *
+__main__: yield-from_{}.py:
+   1   from fixtures import *
    2
    3   def gen():
    4 !   for i in range(1):
@@ -20,4 +20,4 @@ __main__: test/yield-from_{}.py:
   16 %   for i in range(arg):
   17 |     assert next(yfr, None) == next(yfg, None)
 
-__main__: test/yield-from_{}.py: 19 lines; 5 trivial; 14 traceable; 8 covered; 1 ignored; 0 ignored but covered; 5 not covered.
+__main__: yield-from_{}.py: 19 lines; 5 trivial; 14 traceable; 8 covered; 1 ignored; 0 ignored but covered; 5 not covered.

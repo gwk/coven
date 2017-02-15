@@ -4,7 +4,7 @@ The `as` implies a SETUP_FINALLY block,
 which is optional but must jump to the required `return False`.
 '''
 
-from exc import *
+from fixtures import *
 
 def top(arg):
   try:

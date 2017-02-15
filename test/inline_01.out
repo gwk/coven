@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/inline_{}.py:
+__main__: inline_{}.py:
    4
    5   def top(arg):
    6
@@ -20,4 +20,4 @@ __main__: test/inline_{}.py:
   19 %   except Exception: r_exc = (1 if arg == 1 else arg)
   20     else: r_exc = arg # 0 case only.
 
-__main__: test/inline_{}.py: 28 lines; 11 trivial; 17 traceable; 13 covered; 0 ignored; 0 ignored but covered; 4 not covered.
+__main__: inline_{}.py: 28 lines; 11 trivial; 17 traceable; 13 covered; 0 ignored; 0 ignored but covered; 4 not covered.

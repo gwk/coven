@@ -1,4 +1,4 @@
 {
   'interpreter': '$PROJ/cove.py',
-  'links': 'test',
+  'env': { 'PYTHONPATH' : '$PROJ/test' },
 }

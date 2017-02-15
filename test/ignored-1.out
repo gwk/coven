@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/ignored-{}.py:
+__main__: ignored-{}.py:
    1
    2   from sys import argv
    3
@@ -27,4 +27,4 @@ __main__: test/ignored-{}.py:
   23
   24   for a in argv[1]: top(int(a))
 
-__main__: test/ignored-{}.py: 24 lines; 8 trivial; 16 traceable; 8 covered; 2 ignored; 4 ignored but covered; 2 not covered.
+__main__: ignored-{}.py: 24 lines; 8 trivial; 16 traceable; 8 covered; 2 ignored; 4 ignored but covered; 2 not covered.

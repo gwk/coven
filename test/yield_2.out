@@ -2,7 +2,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/yield_{}.py:
+__main__: yield_{}.py:
    1   from sys import argv
    2
    3   def yield_(stop):
@@ -10,4 +10,4 @@ __main__: test/yield_{}.py:
    5 %     if i == stop: break
    6       yield i
 
-__main__: test/yield_{}.py: 11 lines; 3 trivial; 8 traceable; 7 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: yield_{}.py: 11 lines; 3 trivial; 8 traceable; 7 covered; 0 ignored; 0 ignored but covered; 1 not covered.

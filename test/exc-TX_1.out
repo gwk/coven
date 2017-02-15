@@ -1,12 +1,12 @@
 ----------------
 Coverage Report:
 
-__main__: test/exc-TX_{:d}.py:
-   2   from exc import *
+__main__: exc-TX_{:d}.py:
+   2   from fixtures import *
    3
    4   def top(arg):
    5     try:
    6 %     try_(arg)
    7     except:
 
-__main__: test/exc-TX_{:d}.py: 10 lines; 3 trivial; 7 traceable; 6 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: exc-TX_{:d}.py: 10 lines; 3 trivial; 7 traceable; 6 covered; 0 ignored; 0 ignored but covered; 1 not covered.

@@ -2,4 +2,4 @@ handle_args: char:1; exception: E1().
 ----------------
 Coverage Report:
 
-__main__: test/exc-TF_{:d}.py: 10 lines; 4 trivial; 6 traceable; 6 covered; 0 ignored; 0 ignored but covered; 0 not covered.
+__main__: exc-TF_{:d}.py: 10 lines; 4 trivial; 6 traceable; 6 covered; 0 ignored; 0 ignored but covered; 0 not covered.

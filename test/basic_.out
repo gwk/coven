@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/basic_{}.py:
+__main__: basic_{}.py:
    2   from sys import argv
    3
    4
@@ -18,4 +18,4 @@ __main__: test/basic_{}.py:
   15
   16 % for a in argv[1]: top(int(a))
 
-__main__: test/basic_{}.py: 16 lines; 7 trivial; 9 traceable; 3 covered; 0 ignored; 0 ignored but covered; 6 not covered.
+__main__: basic_{}.py: 16 lines; 7 trivial; 9 traceable; 3 covered; 0 ignored; 0 ignored but covered; 6 not covered.

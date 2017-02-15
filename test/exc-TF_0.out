@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/exc-TF_{:d}.py:
+__main__: exc-TF_{:d}.py:
    4   def top(arg):
    5     try:
    6       try_(arg)
@@ -9,4 +9,4 @@ __main__: test/exc-TF_{:d}.py:
    8 %     fin()
    9
 
-__main__: test/exc-TF_{:d}.py: 10 lines; 4 trivial; 6 traceable; 5 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: exc-TF_{:d}.py: 10 lines; 4 trivial; 6 traceable; 5 covered; 0 ignored; 0 ignored but covered; 1 not covered.

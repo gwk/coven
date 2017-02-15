@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/while_{}.py:
+__main__: while_{}.py:
   12     i = arg
   13     while i:
   14       while_()
@@ -9,4 +9,4 @@ __main__: test/while_{}.py:
   16 !       break
   17       i -= 1
 
-__main__: test/while_{}.py: 25 lines; 9 trivial; 16 traceable; 15 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: while_{}.py: 25 lines; 9 trivial; 16 traceable; 15 covered; 0 ignored; 0 ignored but covered; 1 not covered.

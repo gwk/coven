@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/exc-TX_{:d}.py:
+__main__: exc-TX_{:d}.py:
    3
    4   def top(arg):
    5     try:
@@ -10,4 +10,4 @@ __main__: test/exc-TX_{:d}.py:
    8 !     exc()
    9
 
-__main__: test/exc-TX_{:d}.py: 10 lines; 3 trivial; 7 traceable; 5 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TX_{:d}.py: 10 lines; 3 trivial; 7 traceable; 5 covered; 0 ignored; 0 ignored but covered; 2 not covered.

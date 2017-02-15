@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: test/basic_{}.py:
+__main__: basic_{}.py:
    3
    4
    5   def top(arg):
@@ -15,4 +15,4 @@ __main__: test/basic_{}.py:
   13 !   return None
   14
 
-__main__: test/basic_{}.py: 16 lines; 7 trivial; 9 traceable; 5 covered; 0 ignored; 0 ignored but covered; 4 not covered.
+__main__: basic_{}.py: 16 lines; 7 trivial; 9 traceable; 5 covered; 0 ignored; 0 ignored but covered; 4 not covered.

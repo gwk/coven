@@ -2,4 +2,4 @@ handle_args: char:1; exception: TestException().
 ----------------
 Coverage Report:
 
-__main__: test/exc-TF-TXR_{}.py: 15 lines; 4 trivial; 11 traceable; 11 covered; 0 ignored; 0 ignored but covered; 0 not covered.
+__main__: exc-TF-TXR_{}.py: 15 lines; 4 trivial; 11 traceable; 11 covered; 0 ignored; 0 ignored but covered; 0 not covered.

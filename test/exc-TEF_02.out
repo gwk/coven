@@ -2,7 +2,7 @@ handle_args: char:2; exception: E2().
 ----------------
 Coverage Report:
 
-__main__: test/exc-TEF_{:d}.py:
+__main__: exc-TEF_{:d}.py:
    3
    4   def top(arg):
    5     try:
@@ -11,4 +11,4 @@ __main__: test/exc-TEF_{:d}.py:
    8 !     exc()
    9     finally:
 
-__main__: test/exc-TEF_{:d}.py: 12 lines; 4 trivial; 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TEF_{:d}.py: 12 lines; 4 trivial; 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.

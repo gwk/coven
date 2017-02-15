@@ -1,4 +1,4 @@
-from exc import *
+from fixtures import *
 
 def top(arg):
   with CM(False):
