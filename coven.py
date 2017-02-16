@@ -123,35 +123,34 @@ LINE_RETURN = OFF_RETURN = OP_RETURN = -3
 
 def install_trace(targets, dbg):
   'NOTE: this must be called before importing any module that we might wish to trace with coven.'
+  if dbg: errSL("coven targets:", targets)
 
   code_edges = defaultdict(set)
   file_name_filter = {}
 
-  def is_code_path_targeted(code):
+  def is_code_targeted(code):
     module = getmodule(code)
-    if dbg:
-      stderr.flush()
-      errSL('coven.is_code_path_targeted: {}:{} -> {} -> {}'.format(
-        code.co_filename, code.co_name, module and module.__name__,
-        (module and module.__name__) in targets))
     if module is None: return False # probably a python builtin; not traceable.
+    is_target = (module.__name__ in targets)
     # note: the module filename may not equal the code filename.
     # example: .../python3.5/collections/abc.py != .../python3.5/_collections_abc.py
     # thus the following check sometimes fires, but it seems acceptable.
     #if dbg and module.__file__ != code.co_filename:
     #  errSL(f'  note: module file: {module.__file__} != code file: {code.co_filename}')
-    is_target = (module.__name__ in targets)
+    if dbg:
+      stderr.flush()
+      errSL(f'coven.is_code_targeted: {code.co_filename}:{code.co_name} -> {module.__name__} -> {is_target}')
     return is_target
 
   def cove_global_tracer(g_frame, g_event, _g_arg_is_none):
-    #errSL('GTRACE:', g_event, g_frame.f_lineno, g_frame.f_code.co_name)
-    if g_event != 'call': return None
     code = g_frame.f_code
+    #if dbg == code.co_name: dbgerrSL('GTRACE:', g_event, g_frame.f_lineno, f_code.co_name)
+    if g_event != 'call': return None
     path = code.co_filename
     try:
       is_target = file_name_filter[path]
     except KeyError:
-      is_target = is_code_path_targeted(code)
+      is_target = is_code_targeted(code)
       file_name_filter[path] = is_target
 
     if not is_target: return None # do not trace this scope.
