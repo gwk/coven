@@ -286,14 +286,13 @@ def calculate_coverage(path, code_edges, dbg):
     # match traced to inferred edges.
     possible = req | opt
     raise_edges = { edge[1] : edge for edge in possible if edge[0] == OFF_RAISED }
-    match = set()
+    match = set() # expected exception edges that matched an actual traced edge.
     for edge in traced:
       if edge not in possible:
-        if edge[1] in raise_edges:
-          match.add(edge)
-          match.add(raise_edges[edge[1]])
-        else:
-          err_edge('UNEXPECTED:', edge, code)
+        try: raise_edge = raise_edges[edge[1]]
+        except KeyError: err_edge('UNEXPECTED:', edge, code)
+        else: match.add(raise_edge)
+
     # assemble final coverage data by line.
     add_edges(req,    code, COV_REQ)
     add_edges(opt,    code, COV_OPT)
@@ -737,11 +736,7 @@ def report_path(target, path, coverage, totals, args):
   ign_cov_lines = set()
   not_cov_lines = set()
 
-  unexpected_lines = set() # line indices that have unexpected edges.
-
   for line, (required, optional, traced, match) in coverage.items():
-    possible = required | optional | match
-    unexpected = traced - possible
     if traced | match >= required:
       if line in ignored_lines:
         ign_cov_lines.add(line)
@@ -749,10 +744,8 @@ def report_path(target, path, coverage, totals, args):
         covered_lines.add(line)
     elif line not in ignored_lines:
       not_cov_lines.add(line)
-    if unexpected:
-      unexpected_lines.add(line)
 
-  problem_lines = ign_cov_lines | not_cov_lines | unexpected_lines
+  problem_lines = ign_cov_lines | not_cov_lines
 
   length = len(line_texts)
   stats = Stats()
@@ -800,11 +793,7 @@ def report_path(target, path, coverage, totals, args):
         color = TXT_L1
       else:
         required, optional, traced, match = coverage[line]
-        if line in unexpected_lines:
-          color = TXT_M1
-          sym = '*'
-          needs_dbg = True
-        elif line in ign_cov_lines:
+        if line in ign_cov_lines:
           color = TXT_Y1
           sym = '?'
         elif line in ignored_lines:
