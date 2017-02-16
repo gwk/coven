@@ -169,11 +169,6 @@ def install_trace(targets, dbg):
       if event in ('instruction', 'line'):
         edges.add((prev_off, off, line))
         prev_off = off
-      elif event == 'exception':
-        prev_off  = OFF_RAISED
-      #elif event == 'return':
-      #  prev_off  = OFF_RETURN
-      #else: raise ValueError(event)
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
 
     return cove_local_tracer # global tracer installs a new local tracer for every call.
