@@ -418,18 +418,6 @@ def crawl_code_insts(path, code, dbg_name):
     if inst.off == 0:
       dsts[_begin_inst].add(inst)
 
-    if op == YIELD_VALUE:
-      dsts[_begin_inst].add(nexts[inst])
-
-    if op == YIELD_FROM:
-      dsts[_begin_inst].add(inst)
-      dsts[_raised_inst].add(nexts[inst])
-      #^ Use the same hack as FOR_ITER to accommodate generators that emit raise instead of advance.
-      #^ See emit_edges for explanation.
-
-    if op == SETUP_FINALLY and is_SF_exc_opt(nexts[inst], insts, path, name):
-      insts[inst.argval].is_SF_exc_opt = True
-
     if op not in stop_opcodes:
       dsts[inst].add(nexts[inst])
 
@@ -471,6 +459,21 @@ def crawl_code_insts(path, code, dbg_name):
     elif op == RETURN_VALUE:
       dst_off = find_block_dst_off(inst, (SETUP_ASYNC_WITH, SETUP_FINALLY, SETUP_WITH))
       if dst_off: dsts[inst].add(insts[dst_off])
+
+    elif op == SETUP_FINALLY:
+      if is_SF_exc_opt(nexts[inst], insts, path, name):
+        insts[inst.argval].is_SF_exc_opt = True
+
+    elif op == YIELD_VALUE:
+      dsts[_begin_inst].add(nexts[inst])
+
+    elif op == YIELD_FROM:
+      dsts[_begin_inst].add(inst)
+      dsts[_raised_inst].add(nexts[inst])
+      #^ Use the same hack as FOR_ITER to accommodate generators that emit raise instead of advance.
+      #^ See emit_edges for explanation.
+
+
 
   srcs = defaultdict(set)
   for src, dst_set in dsts.items():
