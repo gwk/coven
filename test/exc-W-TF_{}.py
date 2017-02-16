@@ -5,6 +5,6 @@ def top(arg):
     try:
       return try_(arg)
     finally:
-      return None
+      return -1
 
 handle_args(top)

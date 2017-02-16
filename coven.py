@@ -265,32 +265,36 @@ def calculate_coverage(path, code_edges, dbg):
   if dbg: all_codes.sort(key=lambda c: c.co_name)
 
   coverage = defaultdict(lambda: (set(), set()))
-  def add_edges(edges, code, cov_idx):
-    for edge in edges:
-      line = edge[2]
-      assert line > 0
-      coverage[line][cov_idx].add((edge[0], edge[1], code))
+  def add_edges(edge_lines, code, cov_idx):
+    for edge, lines in edge_lines.items():
+      for line in lines:
+        assert line > 0
+        coverage[line][cov_idx].add((edge[0], edge[1], code))
 
   for code in all_codes:
     traced = code_edges.get(code, {})
-    if dbg == code.co_name:
-      for edge in sorted(traced): err_edge('traced', edge, code)
     # infer all possible edges.
     # TODO: optimization: if not traces, do not bother analyzing code; instead just add fake required edges for each line start in code.
     req, opt = crawl_code_insts(path=path, code=code, dbg_name=dbg)
+    if dbg == code.co_name:
+      for edge in sorted(traced): err_edge('traced', edge, code)
     # match traced to inferred edges.
-    possible = req | opt
-    raise_edges = { edge[1] : edge for edge in possible if edge[0] == OFF_RAISED }
-    matched = set() # expected exception edges that matched an actual traced edge.
-    for edge in traced:
-      if edge not in possible:
-        try: raise_edge = raise_edges[edge[1]]
-        except KeyError: err_edge('UNEXPECTED:', edge, code)
-        else: matched.add(raise_edge)
-
+    raise_reqs = { edge[1] : (edge, lines) for edge, lines in req.items() if edge[0] == OFF_RAISED }
+    raise_opts = { edge[1] for edge in opt if edge[0] == OFF_RAISED }
+    matched = defaultdict(set) # expected exception edges that matched an actual traced edge.
+    for src, dst, line in traced:
+      edge = (src, dst)
+      if edge in req:
+        matched[edge].add(line)
+      elif dst in raise_reqs:
+        e, l = raise_reqs[dst]
+        matched[e].update(l) # add all the lines (really just one line?) implied by the exception edge.
+      elif not (edge in opt or dst in raise_opts):
+        err_edge('UNEXPECTED:', edge, code)
+        errSL(*raise_reqs)
     # assemble final coverage data by line.
     add_edges(req, code, COV_REQ)
-    add_edges(matched.union(traced), code, COV_MATCHED)
+    add_edges(matched, code, COV_MATCHED)
   return coverage
 
 
@@ -494,24 +498,24 @@ def crawl_code_insts(path, code, dbg_name):
 
   if dbg:
     for arc in sorted(starts_to_arcs.values(), key=arc_key):
-      src_opts = [f'{src.off}:{"o" if is_arc_opt(src, arc) else "r"}' for src in sorted(srcs[arc[0]])]
+      src_opts = [f'{src.off}:{"o" if is_arc_opt(src, arc, srcs, dsts) else "r"}' for src in sorted(srcs[arc[0]])]
       dst_offs = sorted(inst.off for inst in dsts[arc[-1]])
       errSL(TXT_D, 'arc:', ', '.join(src_opts), '=->', dst_offs, RST)
       for inst in arc:
         err_inst(inst)
 
   # Step 4: emit edges for each arc, taking care to represent lines as they will be traced.
-  req = set()
-  opt = set()
-  def add_edge(edge, is_opt):
+  req = defaultdict(set) # maps edges to sets of lines.
+  opt = defaultdict(set) # ditto.
+  def add_edge(edge, line, is_opt):
     if dbg: err_edge(f'   {"opt" if is_opt else "req"}', edge, code)
-    (opt if is_opt else req).add(edge)
+    (opt if is_opt else req)[edge].add(line)
 
   def emit_edges(triple):
     src, src_line, is_src_opt = triple
     for start in dsts[src]:
       arc = starts_to_arcs[start]
-      is_opt = is_arc_opt(src, arc)
+      is_opt = is_arc_opt(src, arc, srcs, dsts)
       prev_line = src_line
       for prev, inst in zip((src,) + arc, arc):
         line = next_line(prev, inst, prev_line)
@@ -525,20 +529,19 @@ def crawl_code_insts(path, code, dbg_name):
           #^ emit an exception edge here to cover both cases,
           #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
           prev_off = OFF_RAISED
-        edge = (prev_off, inst.off, line)
+        edge = (prev_off, inst.off)
         if is_opt:
           pass # TODO: switch back to required when we see "content" instructions.
         else:
           if prev.opcode == END_FINALLY and nexts[prev] == inst:
             # Because END_FINALLY is so hard to analyze, for now we treat any step to next as optional.
             is_opt = True
-        add_edge(edge, (is_opt or (is_src_opt and src == prev)))
+        add_edge(edge, line, (is_opt or (is_src_opt and src == prev)))
         prev_line = line
       yield (inst, line, is_opt)
 
   visit_nodes(start_nodes=[(_begin_inst, LINE_BEGIN, False), (_raised_inst, LINE_RAISED, False)], visitor=emit_edges)
 
-  opt.difference_update(req) # might have overlap?
   return req, opt
 
 
@@ -618,12 +621,13 @@ def is_SF_exc_opt(nxt, insts, path, code_name):
   return False
 
 
-def is_arc_opt(src, arc):
+def is_arc_opt(src, arc, srcs, dsts):
   return (
     is_arc_opt_SF_raise(src, arc) or
     is_arc_unhandled_exc_reraise(src, arc) or
     is_arc_exc_as_cleanup(src, arc) or
-    is_arc_with_cleanup(src, arc)
+    is_arc_with_cleanup(arc) or
+    is_arc_join_return_none(arc, srcs)
   )
 
 
@@ -659,7 +663,7 @@ def is_arc_exc_as_cleanup(src, arc):
     END_FINALLY))
 
 
-def is_arc_with_cleanup(src, arc):
+def is_arc_with_cleanup(arc):
   '''
   With statements do not typically get the exception case exercised.
   TODO: this heuristic may need to be broadened.
@@ -668,6 +672,17 @@ def is_arc_with_cleanup(src, arc):
     WITH_CLEANUP_START,
     WITH_CLEANUP_FINISH,
     END_FINALLY))
+
+
+def is_arc_join_return_none(arc, srcs):
+  '''
+  `return None` is implied by functions without an explicit final return statement,
+  which causes the last line of a branch to represent the implicit join-and-return arc.
+  This looks confusing, because it shows partial coverage of the branch when there is None.
+  '''
+  return len(arc) == 2 and len(srcs[arc[0]]) > 1 and match_insts(arc, (
+    (LOAD_CONST, None),
+    RETURN_VALUE))
 
 
 def match_insts(insts, exps):
@@ -723,7 +738,7 @@ class Stats:
 def report_path(target, path, coverage, totals, args):
 
   line_texts = [text.rstrip() for text in open(path).readlines()]
-  ignored_lines = calc_ignored_lines(line_texts)
+  ignored_lines, explicitly_ignored_lines = calc_ignored_lines(line_texts)
 
   covered_lines = set() # line indices that are perfectly covered.
   ign_cov_lines = set()
@@ -731,7 +746,7 @@ def report_path(target, path, coverage, totals, args):
 
   for line, (required, matched) in coverage.items():
     if matched >= required:
-      if line in ignored_lines:
+      if line in explicitly_ignored_lines:
         ign_cov_lines.add(line)
       else:
         covered_lines.add(line)
@@ -746,9 +761,9 @@ def report_path(target, path, coverage, totals, args):
   stats.trivial = max(0, length - len(coverage))
   stats.traceable = len(coverage)
   stats.covered = len(covered_lines)
-  stats.ignored = len(ignored_lines) - len(ign_cov_lines)
   stats.ignored_but_covered = len(ign_cov_lines)
   stats.not_covered = len(not_cov_lines)
+  stats.ignored = len(ignored_lines - covered_lines - ign_cov_lines - not_cov_lines)
   totals.add(stats)
 
   c = True if args.color else ''
@@ -804,6 +819,7 @@ def report_path(target, path, coverage, totals, args):
       if args.dbg and needs_dbg:
         #print(f'     {TXT_B1}^ required:{len(required)} traced:{len(traced)}.{RST1}')
         err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}-', required - matched, args.dbg)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}=', matched, args.dbg)
   stats.describe(label, c)
 
 
@@ -827,26 +843,29 @@ def path_comps(path: str):
 
 indent_and_ignored_re = re.compile(r'''(?x:
 ^ (\s*) # capture leading space.
-( assert\b        # ignore assertions.
-| .* \#!cov-ignore .* $  # ignore directive.
+( .* (?P<directive> \#!cov-ignore )
+| assert\b
 | if \s+ __name__ \s* == \s* ['"]__main__['"] \s* :
 )?
 )''')
 
 def calc_ignored_lines(line_texts):
-  ignored = set()
-  ignored_indent = 0
+  explicit = set()
+  implicit = set()
+  indent = -1
+  is_directive = False
   for line, text in enumerate(line_texts, 1):
     m = indent_and_ignored_re.match(text)
-    indent = m.end(1) - m.start(1)
+    ind = m.end(1) - m.start(1)
     if m.lastindex == 2: # matched one of the ignore triggers.
-      ignored.add(line)
-      ignored_indent = indent
-    elif 0 < ignored_indent < indent:
-      ignored.add(line)
+      is_directive = bool(m.group('directive')) # explicit ignore.
+      (explicit if is_directive else implicit).add(line)
+      indent = ind
+    elif -1 < indent < ind:
+      (explicit if is_directive else implicit).add(line)
     else:
-      ignored_indent = 0
-  return ignored
+      indent = -1
+  return (explicit | implicit), explicit
 
 
 def line_ranges(iterable, before, after, terminal):
@@ -871,8 +890,8 @@ def line_ranges(iterable, before, after, terminal):
 
 
 def fmt_edge(edge, code):
-  src, dst, line = edge
-  return f'off: {src:4} -> {dst:4}    line: {line:4}  {code.co_name}'
+  src, dst = edge[:2]
+  return f'off: {src:4} -> {dst:4}  {code.co_name}'
 
 
 def errSL(*items): print(*items, file=stderr)
@@ -880,8 +899,8 @@ def errSL(*items): print(*items, file=stderr)
 def errLSSL(*items): print(*items, sep='\n  ', file=stderr)
 
 
-def err_edge(label, edge, code, *tail):
-  errSL(label, fmt_edge(edge, code), *tail)
+def err_edge(label, edge, code):
+  errSL(label, fmt_edge(edge, code))
 
 
 def err_cov_set(label, cov_set, dbg_name):

@@ -8,7 +8,7 @@ __main__: exc-W-TF_{}.py:
    5       try:
    6 %       return try_(arg)
    7       finally:
-   8 %       return None
+   8 %       return -1
    9
 
 __main__: exc-W-TF_{}.py: 10 lines; 3 trivial; 7 traceable; 5 covered; 0 ignored; 0 ignored but covered; 2 not covered.

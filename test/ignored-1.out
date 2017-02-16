@@ -7,24 +7,24 @@ __main__: ignored-{}.py:
    3
    4
    5   def top(on):
-   6 %   if on:
+   6     if on:
    7       inline(on)
    8       multi(on)
    9       partial(on)
   10
-  11 | def inline(on): return on if on else None #!cov-ignore.
+  11 | def inline(on): return on if on else -1 #!cov-ignore.
   12
   13   def multi(on):
   14 ?   if on: #!cov-ignore.
   15 ?     return on
-  16 |   return None #!cov-ignore.
+  16 |   return -1 #!cov-ignore.
   17
   18   def partial(on):
   19 ?   if on: #!cov-ignore.
   20 ?     return on
-  21 !   return None # never covered; this test assures that previous annotation is terminated.
+  21 !   return -1 # never covered; this test assures that previous annotation is terminated.
   22
   23
   24   for a in argv[1]: top(int(a))
 
-__main__: ignored-{}.py: 24 lines; 8 trivial; 16 traceable; 8 covered; 2 ignored; 4 ignored but covered; 2 not covered.
+__main__: ignored-{}.py: 24 lines; 8 trivial; 16 traceable; 9 covered; 2 ignored; 4 ignored but covered; 1 not covered.
