@@ -331,6 +331,7 @@ def enhance_inst(inst, off, line, is_line_start, stack):
   inst.is_line_start = is_line_start
   inst.stack = stack
   inst.is_SF_exc_opt = False
+  inst.is_call_exit = False
   inst.is_exc_match = False
   inst.is_exc_match_jmp_src = False
   inst.is_exc_match_jmp_dst = False
@@ -393,6 +394,12 @@ def crawl_code_insts(path, code, dbg_name):
     nexts[prev] = inst
     prevs[inst] = prev
 
+    if op == CALL_FUNCTION:
+      p = prev
+      if p.opcode == LOAD_CONST: p = prevs[p]
+      if p.opcode == LOAD_GLOBAL and p.argval == 'exit':
+        inst.is_call_exit = True
+
     if op == COMPARE_OP and inst.argrepr == 'exception match':
       # This instruction is doing an exception match,
       # which will lead to a jump that results in the exception getting reraised.
@@ -405,7 +412,7 @@ def crawl_code_insts(path, code, dbg_name):
       inst.is_exc_match_jmp_dst = True
 
     prev = inst
-    #if dbg: err_inst(inst)
+    if dbg: err_inst(inst)
 
   # Step 2: scan again to assemble dsts and add additional info.
 
@@ -418,7 +425,7 @@ def crawl_code_insts(path, code, dbg_name):
     if inst.off == 0:
       dsts[_begin_inst].add(inst)
 
-    if op not in stop_opcodes:
+    if op not in stop_opcodes and not inst.is_call_exit:
       dsts[inst].add(nexts[inst])
 
     if op in jump_opcodes:
@@ -937,12 +944,14 @@ SETUP_WITH            = opmap['SETUP_WITH']
 
 # other opcodes of interest.
 BREAK_LOOP            = opmap['BREAK_LOOP']
+CALL_FUNCTION         = opmap['CALL_FUNCTION']
 COMPARE_OP            = opmap['COMPARE_OP']
 DELETE_FAST           = opmap['DELETE_FAST']
 DUP_TOP               = opmap['DUP_TOP']
 END_FINALLY           = opmap['END_FINALLY']
 EXTENDED_ARG          = opmap['EXTENDED_ARG']
 LOAD_CONST            = opmap['LOAD_CONST']
+LOAD_GLOBAL           = opmap['LOAD_GLOBAL']
 POP_BLOCK             = opmap['POP_BLOCK']
 POP_EXCEPT            = opmap['POP_EXCEPT']
 POP_TOP               = opmap['POP_TOP']
