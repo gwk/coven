@@ -259,7 +259,7 @@ def gen_path_code_edges(code_edges):
 def calculate_coverage(path, code_edges, dbg):
   '''
   Calculate and return the coverage data structure,
-  Which maps line numbers to (required, traced, matched) tuples of sets of (src, dst, code).
+  Which maps line numbers to (required, matched) tuples of sets of (src, dst, code).
   Each set contains Edge tuples.
   An Edge is (prev_offset, offset, code).
   A line is fully covered if (required <= traced).
@@ -269,7 +269,7 @@ def calculate_coverage(path, code_edges, dbg):
   all_codes = list(visit_nodes(start_nodes=code_edges, visitor=sub_codes))
   if dbg: all_codes.sort(key=lambda c: c.co_name)
 
-  coverage = defaultdict(lambda: (set(), set(), set()))
+  coverage = defaultdict(lambda: (set(), set()))
   def add_edges(edges, code, cov_idx):
     for edge in edges:
       line = edge[2]
@@ -286,21 +286,20 @@ def calculate_coverage(path, code_edges, dbg):
     # match traced to inferred edges.
     possible = req | opt
     raise_edges = { edge[1] : edge for edge in possible if edge[0] == OFF_RAISED }
-    match = set() # expected exception edges that matched an actual traced edge.
+    matched = set() # expected exception edges that matched an actual traced edge.
     for edge in traced:
       if edge not in possible:
         try: raise_edge = raise_edges[edge[1]]
         except KeyError: err_edge('UNEXPECTED:', edge, code)
-        else: match.add(raise_edge)
+        else: matched.add(raise_edge)
 
     # assemble final coverage data by line.
-    add_edges(req,    code, COV_REQ)
-    add_edges(traced, code, COV_TRACED)
-    add_edges(match,  code, COV_MATCH)
+    add_edges(req, code, COV_REQ)
+    add_edges(matched.union(traced), code, COV_MATCHED)
   return coverage
 
 
-COV_REQ, COV_TRACED, COV_MATCH = range(3)
+COV_REQ, COV_MATCHED = range(2)
 
 
 def visit_nodes(start_nodes, visitor):
@@ -735,8 +734,8 @@ def report_path(target, path, coverage, totals, args):
   ign_cov_lines = set()
   not_cov_lines = set()
 
-  for line, (required, traced, match) in coverage.items():
-    if traced | match >= required:
+  for line, (required, matched) in coverage.items():
+    if matched >= required:
       if line in ignored_lines:
         ign_cov_lines.add(line)
       else:
@@ -791,7 +790,7 @@ def report_path(target, path, coverage, totals, args):
       if line not in coverage: # trivial.
         color = TXT_L1
       else:
-        required, traced, match = coverage[line]
+        required, matched = coverage[line]
         if line in ign_cov_lines:
           color = TXT_Y1
           sym = '?'
@@ -800,7 +799,7 @@ def report_path(target, path, coverage, totals, args):
           sym = '|'
         elif line in not_cov_lines:
           color = TXT_R1
-          if traced | match:
+          if matched:
             sym = '%'
             needs_dbg = True
           else: # no coverage.
@@ -809,7 +808,7 @@ def report_path(target, path, coverage, totals, args):
       print(f'{TXT_D1}{line:4} {color}{sym} {text}{RST1}'.rstrip())
       if args.dbg and needs_dbg:
         #print(f'     {TXT_B1}^ required:{len(required)} traced:{len(traced)}.{RST1}')
-        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}-', required - traced, args.dbg)
+        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}-', required - matched, args.dbg)
   stats.describe(label, c)
 
 
