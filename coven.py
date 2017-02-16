@@ -278,12 +278,22 @@ def calculate_coverage(path, code_edges, dbg):
 
   for code in all_codes:
     traced = code_edges.get(code, {})
-    # generate all possible traces.
-    # TODO: optimization: if not traces, do not bother analyzing code; instead just add fake required edges for each line start in code.
-    req, opt = crawl_code_insts(path=path, code=code, dbg_name=dbg)
     if dbg == code.co_name:
       for edge in sorted(traced): err_edge('traced', edge, code)
-    match = match_edges(req, opt, traced)
+    # infer all possible edges.
+    # TODO: optimization: if not traces, do not bother analyzing code; instead just add fake required edges for each line start in code.
+    req, opt = crawl_code_insts(path=path, code=code, dbg_name=dbg)
+    # match traced to inferred edges.
+    possible = req | opt
+    raise_edges = { edge[1] : edge for edge in possible if edge[0] == OFF_RAISED }
+    match = set()
+    for edge in traced:
+      if edge not in possible:
+        if edge[1] in raise_edges:
+          match.add(edge)
+          match.add(raise_edges[edge[1]])
+        else:
+          err_edge('UNEXPECTED:', edge, code)
     # assemble final coverage data by line.
     add_edges(req,    code, COV_REQ)
     add_edges(opt,    code, COV_OPT)
@@ -435,7 +445,7 @@ def crawl_code_insts(path, code, dbg_name):
       #^ Enter the exception handler from an unknown exception source.
       #^ This makes matching harder because while initial raises are labeled with src=OFF_RAISED,
       #^ reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
-      #^ The solution is to use match_edges().
+      #^ The solution is in the custom matching logic in calculate_coverage.
       # TODO: Perhaps it is possible to emit optional edges from reraising END_FINALLY?
 
     if op == BREAK_LOOP:
@@ -519,7 +529,7 @@ def crawl_code_insts(path, code, dbg_name):
           #^ We might get a normal edge when the loop ends, or a StopIteration exception edge.
           #^ The StopIteration exception lands at the FOR_ITER dst, not the SETUP_LOOP dst.
           #^ This is why setup_exc_opcodes excludes SETUP_LOOP; it's not the actual destination.
-          #^ Since match_edges can convert traced normal edges to expected exception edges,
+          #^ Since calculate_coverage can convert traced normal edges to expected exception edges,
           #^ emit an exception edge here to cover both cases,
           #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
           prev_off = OFF_RAISED
@@ -536,6 +546,7 @@ def crawl_code_insts(path, code, dbg_name):
 
   visit_nodes(start_nodes=[(_begin_inst, LINE_BEGIN, False), (_raised_inst, LINE_RAISED, False)], visitor=emit_edges)
 
+  opt.difference_update(req) # might have overlap?
   return req, opt
 
 
@@ -680,23 +691,6 @@ def match_inst(inst, exp):
     return inst.opcode == exp
 
 
-def match_edges(req, opt, traced):
-  '''
-  Given the three edge sets, return a fourth set of edges containing those edges that have
-  been matched manually. This `matches` set is unioned with both sides to mark those edges
-  as accounted for.
-  '''
-  opt.difference_update(req) # might have overlap?
-  possible = req | opt
-  raise_edges = { edge[1] : edge for edge in possible if edge[0] == OFF_RAISED }
-  matches = set()
-  for edge in traced:
-    if edge not in possible and edge[1] in raise_edges:
-      matches.add(edge)
-      matches.add(raise_edges[edge[1]])
-  return matches
-
-
 class Stats:
 
   def __init__(self):
@@ -831,7 +825,6 @@ def report_path(target, path, coverage, totals, args):
         err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}-', required - traced, args.dbg)
         err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}o', optional - traced, args.dbg)
         err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}=', possible & traced, args.dbg)
-        err_cov_set(f'{TXT_D1}{line:4} {TXT_B1}+', traced - possible, args.dbg)
   stats.describe(label, c)
 
 
