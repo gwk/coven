@@ -269,7 +269,7 @@ def calculate_coverage(path, code_edges, dbg):
   all_codes = list(visit_nodes(start_nodes=code_edges, visitor=sub_codes))
   if dbg: all_codes.sort(key=lambda c: c.co_name)
 
-  coverage = defaultdict(lambda: (set(), set(), set()))
+  coverage = defaultdict(lambda: (set(), set(), set(), set()))
   def add_edges(edges, code, cov_idx):
     for edge in edges:
       line = edge[2]
@@ -283,16 +283,16 @@ def calculate_coverage(path, code_edges, dbg):
     req, opt = crawl_code_insts(path=path, code=code, dbg_name=dbg)
     if dbg == code.co_name:
       for edge in sorted(traced): err_edge('traced', edge, code)
-    reduce_edges(req, opt, traced)
+    match = match_edges(req, opt, traced)
     # assemble final coverage data by line.
     add_edges(req,    code, COV_REQ)
     add_edges(opt,    code, COV_OPT)
     add_edges(traced, code, COV_TRACED)
-
+    add_edges(match,  code, COV_MATCH)
   return coverage
 
 
-COV_REQ, COV_OPT, COV_TRACED = range(3)
+COV_REQ, COV_OPT, COV_TRACED, COV_MATCH = range(4)
 
 
 def visit_nodes(start_nodes, visitor):
@@ -435,7 +435,7 @@ def crawl_code_insts(path, code, dbg_name):
       #^ Enter the exception handler from an unknown exception source.
       #^ This makes matching harder because while initial raises are labeled with src=OFF_RAISED,
       #^ reraises do not get traced and so they have src offset of the END_FINALLY that reraises.
-      #^ The solution is to use reduce_edges().
+      #^ The solution is to use match_edges().
       # TODO: Perhaps it is possible to emit optional edges from reraising END_FINALLY?
 
     if op == BREAK_LOOP:
@@ -519,7 +519,7 @@ def crawl_code_insts(path, code, dbg_name):
           #^ We might get a normal edge when the loop ends, or a StopIteration exception edge.
           #^ The StopIteration exception lands at the FOR_ITER dst, not the SETUP_LOOP dst.
           #^ This is why setup_exc_opcodes excludes SETUP_LOOP; it's not the actual destination.
-          #^ Since reduce_edges can convert traced normal edges to expected exception edges,
+          #^ Since match_edges can convert traced normal edges to expected exception edges,
           #^ emit an exception edge here to cover both cases,
           #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
           prev_off = OFF_RAISED
@@ -680,22 +680,21 @@ def match_inst(inst, exp):
     return inst.opcode == exp
 
 
-def reduce_edges(req, opt, traced):
+def match_edges(req, opt, traced):
   '''
-  Transform the three sets as necessary so that later set comparison operations will calculate
-  per-line coverage appropriately.
+  Given the three edge sets, return a fourth set of edges containing those edges that have
+  been matched manually. This `matches` set is unioned with both sides to mark those edges
+  as accounted for.
   '''
   opt.difference_update(req) # might have overlap?
   possible = req | opt
-  raise_lines = { dst : line for src, dst, line in possible if src == OFF_RAISED }
-  def reduce_edge(edge):
-    src, dst, line = edge
-    if edge not in possible and dst in raise_lines:
-      return (OFF_RAISED, dst, raise_lines[dst])
-    return edge
-  traced_ = [reduce_edge(edge) for edge in traced]
-  traced.clear()
-  traced.update(traced_)
+  raise_edges = { edge[1] : edge for edge in possible if edge[0] == OFF_RAISED }
+  matches = set()
+  for edge in traced:
+    if edge not in possible and edge[1] in raise_edges:
+      matches.add(edge)
+      matches.add(raise_edges[edge[1]])
+  return matches
 
 
 class Stats:
@@ -746,10 +745,10 @@ def report_path(target, path, coverage, totals, args):
 
   unexpected_lines = set() # line indices that have unexpected edges.
 
-  for line, (required, optional, traced) in coverage.items():
-    possible = required | optional
+  for line, (required, optional, traced, match) in coverage.items():
+    possible = required | optional | match
     unexpected = traced - possible
-    if traced >= required:
+    if traced | match >= required:
       if line in ignored_lines:
         ign_cov_lines.add(line)
       else:
@@ -806,7 +805,7 @@ def report_path(target, path, coverage, totals, args):
       if line not in coverage: # trivial.
         color = TXT_L1
       else:
-        required, optional, traced = coverage[line]
+        required, optional, traced, match = coverage[line]
         if line in unexpected_lines:
           color = TXT_M1
           sym = '*'
@@ -819,7 +818,7 @@ def report_path(target, path, coverage, totals, args):
           sym = '|'
         elif line in not_cov_lines:
           color = TXT_R1
-          if traced:
+          if traced | match:
             sym = '%'
             needs_dbg = True
           else: # no coverage.
