@@ -363,11 +363,8 @@ def crawl_code_insts(path, code, dbg_name):
     is_line_start = bool(starts_line)
     line = starts_line or prev.line
 
-    if blocks:
-      _op, dst = blocks[-1]
-      assert dst >= off
-      if dst == off:
-        blocks.pop()
+    while blocks and blocks[-1][1] == off:
+      blocks.pop()
       #^ According to cpython compile.c,
       #^ each block lifespan is terminated by POP_BLOCK, POP_EXCEPT, or END_FINALLY.
       #^ However there might be multiple pop instructions for a single block (in different branches),
@@ -378,7 +375,7 @@ def crawl_code_insts(path, code, dbg_name):
 
     if op in setup_opcodes:
       dst = inst.argval
-      assert all(dst < d for _, d in blocks)
+      assert all(dst <= d for _, d in blocks)
       blocks.append((op, dst))
     enhance_inst(inst, off=off, line=line, is_line_start=is_line_start, stack=tuple(blocks))
     if op == EXTENDED_ARG:
