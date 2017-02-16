@@ -160,24 +160,20 @@ def install_trace(targets, dbg):
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
     edges = code_edges[code]
-    prev_line = LINE_BEGIN
     prev_off  = OFF_BEGIN
     def cove_local_tracer(frame, event, arg):
-      nonlocal prev_line, prev_off
+      nonlocal prev_off
       line = frame.f_lineno
       off = frame.f_lasti
-      #errSL(f'LTRACE: {event} {prev_off} -> {off} ({prev_line} -> {line}) {code.co_name}')
+      #errSL(f'LTRACE: {event} {prev_off} -> {off} ({line}) {code.co_name}')
       if event in ('instruction', 'line'):
-        edges.add((prev_off, off, prev_line, line))
-        prev_line = line
+        edges.add((prev_off, off, line))
         prev_off = off
       elif event == 'exception':
-        prev_line = LINE_RAISED
         prev_off  = OFF_RAISED
-      elif event == 'return':
-        prev_line = LINE_RETURN
-        prev_off  = OFF_RETURN
-      else: raise ValueError(event)
+      #elif event == 'return':
+      #  prev_off  = OFF_RETURN
+      #else: raise ValueError(event)
       return cove_local_tracer # local tracer keeps itself in place during its local scope.
 
     return cove_local_tracer # global tracer installs a new local tracer for every call.
@@ -276,7 +272,7 @@ def calculate_coverage(path, code_edges, dbg):
   coverage = defaultdict(lambda: (set(), set(), set()))
   def add_edges(edges, code, cov_idx):
     for edge in edges:
-      line = edge[3]
+      line = edge[2]
       assert line > 0
       coverage[line][cov_idx].add((edge[0], edge[1], code))
 
@@ -530,7 +526,7 @@ def crawl_code_insts(path, code, dbg_name):
           #^ emit an exception edge here to cover both cases,
           #^ but preserve the actual line of the FOR_ITER or else it will look confusing.
           prev_off = OFF_RAISED
-        edge = (prev_off, inst.off, prev_line, line)
+        edge = (prev_off, inst.off, line)
         if is_opt:
           pass # TODO: switch back to required when we see "content" instructions.
         else:
@@ -694,11 +690,11 @@ def reduce_edges(req, opt, traced):
   '''
   opt.difference_update(req) # might have overlap?
   possible = req | opt
-  raise_dst_lines = { dst : dst_line for src, dst, _, dst_line in possible if src == OFF_RAISED }
+  raise_lines = { dst : line for src, dst, line in possible if src == OFF_RAISED }
   def reduce_edge(edge):
-    src, dst, _, dst_line = edge
-    if edge not in possible and dst in raise_dst_lines:
-      return (OFF_RAISED, dst, LINE_RAISED, raise_dst_lines[dst])
+    src, dst, line = edge
+    if edge not in possible and dst in raise_lines:
+      return (OFF_RAISED, dst, raise_lines[dst])
     return edge
   traced_ = [reduce_edge(edge) for edge in traced]
   traced.clear()
@@ -907,9 +903,8 @@ def line_ranges(iterable, before, after, terminal):
 
 
 def fmt_edge(edge, code):
-  src, dst, sl, dl = edge
-  line = sl if (sl == dl) else f'{sl:4} -> {dl:4}'
-  return f'off: {src:4} -> {dst:4}    line: {line:>12}  {code.co_name}'
+  src, dst, line = edge
+  return f'off: {src:4} -> {dst:4}    line: {line:4}  {code.co_name}'
 
 
 def errSL(*items): print(*items, file=stderr)
