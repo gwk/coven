@@ -2,9 +2,9 @@ writeup v0
 Dedicated to the public domain under CC0: https://creativecommons.org/publicdomain/zero/1.0/.
 
 
-# Coven: Code Coverage Through Bytecode Witchcraft
+# Coven: Code Coverage Witchcraft
 
-Coven is a test coverage harness for Python 3. It uses an extension to the CPython interpreter, pending integration (issue #24900) into Python 3.7. The patch also works on Python 3.6, and Coven is developed against 3.6.
+Coven is an experimental test coverage harness for future versions of Python 3. It uses an extension to the CPython interpreter, pending integration (<http://bugs.python.org/issue29400 issue #29400>) into Python 3.7. The patch also works on Python 3.6, and Coven is developed against patched 3.6.
 
 
 # License
