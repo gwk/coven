@@ -66,7 +66,7 @@ def expand_module_path(path):
 
 def trace_cmd(cmd, arg_targets, output_path, args):
   'NOTE: this must be called before importing any module that we might wish to trace with coven.'
-  cmd_head = abs_path(cmd[0])
+  cmd_path = cmd[0]
   targets = set(arg_targets or ['__main__'])
   # although run_path alters and restores sys.argv[0],
   # we need to replace all of argv to provide the correct arguments to the command getting traced.
@@ -80,9 +80,12 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   code_edges = install_trace(targets, dbg=args.dbg)
   #if dbg: errSL('coven untraceable modules (imported prior to `install_trace`):', sorted(sys.modules.keys()))
   try:
-    run_path(cmd_head, run_name='__main__')
+    run_path(cmd_path, run_name='__main__')
+    #^ Use cmd_path as is (instead of the absolute path), so that it appears as it would naturally in a stack trace.
+    #^ NOTE: this changes the appearance of stack traces; see fixup_traceback below.
+    #^ It might also cause other subtle behavioral changes.
   except FileNotFoundError as e:
-    exit(f'coven error: could not find command to run: {cmd_head!r}')
+    exit(f'coven error: could not find command to run: {cmd_path!r}')
   except SystemExit as e:
     exit_code = e.code
   except BaseException:
@@ -97,11 +100,35 @@ def trace_cmd(cmd, arg_targets, output_path, args):
     stdout.flush()
     stderr.flush()
   sys.argv = orig_argv
-  target_paths = gen_target_paths(targets, cmd_head, dbg=args.dbg)
+
+  # Generate the target paths dictionary.
+  # Path values may be None, indicating that the target was never imported / has no coverage.
+  # Note: __main__ is handled specially:
+  # sys.modules['__main__'] points to coven, while we want the absolute guest command path.
+  target_paths = {}
+  for target in sorted(targets):
+    if target == '__main__':
+      path = abs_path(cmd_path)
+    else:
+      try: path = sys.modules[target].__file__
+      except KeyError: path = None
+    target_paths[target] = path
+    if args.dbg: errSL(f'target_paths: {t} -> {p}')
+
+  # Group code by path; this is necessary for per-file display,
+  # and also lets us store code belonging to __main__ by absolute path,
+  # which disambiguates multiple different mains for coalesced test scripts.
+  # Without the call to `abs_path`, co_filename might be relative in the __main__ case.
+  path_code_edges = defaultdict(dict)
+  for code, edges in code_edges.items():
+    path_code_edges[abs_path(code.co_filename)][code] = edges
+  path_code_edges = dict(path_code_edges) # convert to plain dict for marshal / safety.
+
   if output_path:
-    write_coverage(output_path=output_path, target_paths=target_paths, code_edges=code_edges)
+    write_coverage(output_path=output_path, target_paths=target_paths, path_code_edges=path_code_edges)
   else:
-    report(target_paths=target_paths, code_edges=code_edges, args=args)
+    target_path_lists = { t : [p] for t, p in target_paths.items() }
+    report(target_path_lists=target_path_lists, path_code_edges=path_code_edges, args=args)
   exit(exit_code)
 
 
@@ -176,78 +203,49 @@ def fixup_traceback(traceback):
   while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove coven runpy.run_path frames.
 
 
-def gen_target_paths(targets, cmd_head, dbg):
-  '''
-  Given a list of target module names/paths and the path that serves as __main__,
-  return a dictionary mapping targets to sets of paths.
-  The values are sets to allow __main__ to map to multiple paths,
-  which can occur during coalescing.
-  Empty sets have meaning: they indicate a target which has no coverage.
-  '''
-  target_paths = {}
-  for target in targets:
-    if target == '__main__': # sys.modules['__main__'] points to coven; we want cmd_head.
-      target_paths['__main__'] = {cmd_head}
-    else:
-      try: module = sys.modules[target]
-      except KeyError: target_paths[target] = set()
-      else: target_paths[target] = {module.__file__}
-  if dbg:
-    for t, p in sorted(target_paths.items()):
-      errSL(f'gen_target_paths: {t} -> {p}')
-  return target_paths
-
-
-def write_coverage(output_path, target_paths, code_edges):
+def write_coverage(output_path, target_paths, path_code_edges):
   data = {
     'target_paths': target_paths,
-    'code_edges': dict(code_edges), # convert from defaultdict.
+    'path_code_edges': path_code_edges,
   }
   with open(output_path, 'wb') as f:
     marshal.dump(data, f)
 
 
 def coalesce(trace_paths, arg_targets, args):
-  target_paths = defaultdict(set)
-  for arg_target in arg_targets:
-    target_paths[arg_target]
-  all_code_edges = defaultdict(set)
+  target_path_sets = defaultdict(set)
+  for t in arg_targets:
+    target_path_sets[t] = set()
+  path_code_edges = defaultdict(lambda: defaultdict(set))
   for trace_path in trace_paths:
     try: f = open(trace_path, 'rb')
     except FileNotFoundError:
       exit(f'coven error: trace file not found: {trace_path}')
     with f: data = marshal.load(f)
-    target_paths = data['target_paths']
-    code_edges = data['code_edges']
-    for target, paths in target_paths.items():
+    for target, path in data['target_paths'].items():
       if arg_targets and target not in arg_targets: continue
-    for code, edges in code_edges.items():
-      all_code_edges[code].update(edges)
-  report(target_paths, all_code_edges, args=args)
+      s = target_path_sets[target] # materialize the set; leave empty for None case.
+      if path is not None: s.add(path)
+    target_path_lists = { t : sorted(paths) for t, paths in target_path_sets.items() }
+    for path, code_edges in data['path_code_edges'].items():
+      for code, edges in code_edges.items():
+        path_code_edges[path][code].update(edges)
+  report(target_path_lists=target_path_lists, path_code_edges=path_code_edges, args=args)
 
 
-def report(target_paths, code_edges, args):
+def report(target_path_lists, path_code_edges, args):
   print('----------------')
   print('Coverage Report:')
-  path_code_edges = gen_path_code_edges(code_edges)
   totals = Stats()
-  for target, paths in sorted(target_paths.items()):
+  for target, paths in sorted(target_path_lists.items()):
     if not paths:
       print(f'\n{target}: NEVER IMPORTED.')
       continue
-    for path in sorted(paths):
+    for path in paths:
       coverage = calculate_coverage(path=path, code_edges=path_code_edges[path], dbg=args.dbg)
       report_path(target=target, path=path, coverage=coverage, totals=totals, args=args)
-  if len(target_paths) > 1:
+  if sum(len(paths) for paths in target_path_lists.values()) > 1:
     totals.describe('\nTOTAL', True if args.color else '')
-
-
-def gen_path_code_edges(code_edges):
-  'Group the traced code_edges by path.'
-  d = defaultdict(dict)
-  for code, edges in code_edges.items():
-    d[code.co_filename][code] = edges
-  return d
 
 
 def calculate_coverage(path, code_edges, dbg):
