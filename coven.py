@@ -88,10 +88,10 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   except BaseException:
     from traceback import TracebackException
     exit_code = 1 # exit code that Python returns when an exception raises to toplevel.
-    # format the traceback exactly as it would appear when run without coven.
-    tbe = TracebackException(*exc_info())
-    scrub_traceback(tbe)
-    print(*tbe.format(), sep='', end='', file=stderr)
+    # Format the traceback exactly as it would appear when run without coven.
+    traceback = TracebackException(*exc_info())
+    fixup_traceback(traceback)
+    print(*traceback.format(), sep='', end='', file=stderr)
   finally:
     settraceinst(None, 0)
     stdout.flush()
@@ -105,9 +105,9 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   exit(exit_code)
 
 
-def scrub_traceback(tbe):
+def fixup_traceback(traceback):
   'Remove frames from TracebackException object that refer to coven, rather than the child process under examination.'
-  stack = tbe.stack # StackSummary is a subclass of list.
+  stack = traceback.stack # StackSummary is a subclass of list.
   if not stack or 'coven' not in stack[0].filename: return # not the root exception.
   #^ TODO: verify that the above is sufficiently strict,
   #^ while also covering both the installed entry_point and the local dev cases.
