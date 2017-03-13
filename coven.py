@@ -105,16 +105,6 @@ def trace_cmd(cmd, arg_targets, output_path, args):
   exit(exit_code)
 
 
-def fixup_traceback(traceback):
-  'Remove frames from TracebackException object that refer to coven, rather than the child process under examination.'
-  stack = traceback.stack # StackSummary is a subclass of list.
-  if not stack or 'coven' not in stack[0].filename: return # not the root exception.
-  #^ TODO: verify that the above is sufficiently strict,
-  #^ while also covering both the installed entry_point and the local dev cases.
-  del stack[0]
-  while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove coven runpy.run_path frames.
-
-
 # Fake instruction/line offsets.
 LINE_BEGIN  = OFF_BEGIN  = OP_BEGIN  = -1
 LINE_RAISED = OFF_RAISED = OP_RAISED = -2
@@ -174,6 +164,16 @@ def install_trace(targets, dbg):
 
   settraceinst(cove_global_tracer, 1)
   return code_edges
+
+
+def fixup_traceback(traceback):
+  'Remove frames from TracebackException object that refer to coven, rather than the child process under examination.'
+  stack = traceback.stack # StackSummary is a subclass of list.
+  if not stack or 'coven' not in stack[0].filename: return # not the root exception.
+  #^ TODO: verify that the above is sufficiently strict,
+  #^ while also covering both the installed entry_point and the local dev cases.
+  del stack[0]
+  while stack and stack[0].filename.endswith('runpy.py'): del stack[0] # remove coven runpy.run_path frames.
 
 
 def gen_target_paths(targets, cmd_head, dbg):
