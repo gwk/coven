@@ -134,7 +134,7 @@ def install_trace(targets, dbg):
 
   def cove_global_tracer(g_frame, g_event, _g_arg_is_none):
     code = g_frame.f_code
-    #if dbg == code.co_name: dbgerrSL('GTRACE:', g_event, g_frame.f_lineno, f_code.co_name)
+    #if dbg == code.co_name: errSL('GTRACE:', g_event, g_frame.f_lineno, code.co_name)
     if g_event != 'call': return None
     path = code.co_filename
     try:
