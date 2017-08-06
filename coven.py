@@ -3,7 +3,7 @@
 # Note: any modules imported prior to the calls to install_trace and run_path
 # will not report coverage fully, because their <module> code objects will not be captured.
 # Therefore, we only use stdlib modules.
-import sys; assert sys.version_info >= (3, 6, 0)
+import sys; assert sys.version_info >= (3, 7, 0)
 import marshal
 import os
 import os.path
@@ -15,7 +15,7 @@ from inspect import getmodule
 from itertools import chain
 from os.path import abspath as abs_path, join as path_join, normpath as normalize_path
 from runpy import run_path
-from sys import exc_info, settraceinst, stderr, stdout
+from sys import exc_info, settracestate, stderr, stdout
 from types import CodeType
 
 
@@ -84,6 +84,7 @@ def trace_cmd(cmd, arg_targets, output_path, args):
     #^ Use cmd_path as is (instead of the absolute path), so that it appears as it would naturally in a stack trace.
     #^ NOTE: this changes the appearance of stack traces; see fixup_traceback below.
     #^ It might also cause other subtle behavioral changes.
+    # TODO: should compile code first, outside of try block, to distinguish missing code from a FileNotFoundError in the script.
   except FileNotFoundError as e:
     exit(f'coven error: could not find command to run: {cmd_path!r}')
   except SystemExit as e:
@@ -96,7 +97,7 @@ def trace_cmd(cmd, arg_targets, output_path, args):
     fixup_traceback(traceback)
     print(*traceback.format(), sep='', end='', file=stderr)
   finally:
-    settraceinst(None, 0)
+    settracestate(None)
     stdout.flush()
     stderr.flush()
   sys.argv = orig_argv
@@ -189,7 +190,7 @@ def install_trace(targets, dbg):
 
     return coven_local_tracer # global tracer installs a new local tracer for every call.
 
-  settraceinst(cove_global_tracer, 1)
+  settracestate(coven_global_tracer, trace_instructions=True)
   return code_edges
 
 
