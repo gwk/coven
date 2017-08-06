@@ -10,4 +10,4 @@ __main__: exc-TA-ret_{}.py:
   13 !     return True
   14     return False
 
-__main__: exc-TA-ret_{}.py: 16 lines; 7 trivial; 9 traceable; 7 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TA-ret_{}.py: 16 lines; 8 trivial; 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.
