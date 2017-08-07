@@ -334,10 +334,12 @@ def enhance_inst(inst, off, line, is_line_start, stack):
   inst.is_exc_match_jmp_dst = False
 
 
-_begin_inst = Instruction(opname='_BEGIN', opcode=OP_BEGIN, arg=None, argval=None, argrepr=None, offset=OFF_BEGIN, starts_line=LINE_BEGIN, is_jump_target=False)
+_begin_inst = Instruction(opname='_BEGIN', opcode=OP_BEGIN, arg=None, argval=None, argrepr=None,
+  offset=OFF_BEGIN, starts_line=LINE_BEGIN, is_jump_target=False)
 enhance_inst(_begin_inst, off=OFF_BEGIN, line=LINE_BEGIN, is_line_start=False, stack=())
 
-_raised_inst = Instruction(opname='_RAISED', opcode=OP_RAISED, arg=None, argval=None, argrepr=None, offset=OFF_RAISED, starts_line=LINE_RAISED, is_jump_target=False)
+_raised_inst = Instruction(opname='_RAISED', opcode=OP_RAISED, arg=None, argval=None, argrepr=None,
+  offset=OFF_RAISED, starts_line=LINE_RAISED, is_jump_target=False)
 enhance_inst(_raised_inst, off=OFF_RAISED, line=LINE_RAISED, is_line_start=False, stack=())
 
 
@@ -364,7 +366,6 @@ def crawl_code_insts(path, code, dbg_name):
       ext = inst
     off = ext.offset if ext else inst.offset
     starts_line = ext.starts_line if ext else inst.starts_line
-    is_line_start = bool(starts_line)
     line = starts_line or prev.line
 
     while blocks and blocks[-1][1] == off:
@@ -381,7 +382,7 @@ def crawl_code_insts(path, code, dbg_name):
       dst = inst.argval
       assert all(dst <= d for _, d in blocks)
       blocks.append((op, dst))
-    enhance_inst(inst, off=off, line=line, is_line_start=is_line_start, stack=tuple(blocks))
+    enhance_inst(inst, off=off, line=line, is_line_start=bool(starts_line), stack=tuple(blocks))
     if op == EXTENDED_ARG:
       #if dbg: err_inst(inst)
       continue
@@ -567,7 +568,7 @@ def next_line(inst, nxt, line):
 
 def err_inst(inst, prefix=''):
   op = inst.opcode
-  line = inst.starts_line or ('^' if inst.is_line_start else '')
+  line_num = inst.starts_line or ('^' if inst.is_line_start else '')
   off = inst.off
   sym = ' '
   if inst.is_SF_exc_opt: sym = '~'
@@ -585,7 +586,7 @@ def err_inst(inst, prefix=''):
   else: target = ''
   stack = ''.join(push_abbrs[op] for op, _ in inst.stack)
   arg = f'to {inst.arg} (abs)' if inst.opcode in hasjabs else inst.argrepr
-  errSL(f'{prefix}  line:{line:>4}  off:{off:>4} {dst:4} {sym} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
+  errSL(f'{prefix}  line:{line_num:>4}  off:{off:>4} {dst:4} {sym} {stop} {target:9}  {stack:8}  {inst.opname:{onlen}} {arg}')
 
 
 def find_block_dst_off(inst, match_ops):
