@@ -850,7 +850,7 @@ def path_comps(path: str):
 
 
 indent_and_ignored_re = re.compile(r'''(?x:
-^ (\s*) # capture leading space.
+(\s*) # capture leading space.
 ( .* (?P<directive> \#!cov-ignore )
 | assert\b
 | if \s+ __name__ \s* == \s* ['"]__main__['"] \s* :
