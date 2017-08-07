@@ -159,7 +159,7 @@ def install_trace(targets, dbg):
       errSL(f'coven.is_code_targeted: {code.co_filename}:{code.co_name} -> {module.__name__} -> {is_target}')
     return is_target
 
-  def cove_global_tracer(g_frame, g_event, _g_arg_is_none):
+  def coven_global_tracer(g_frame, g_event, _g_arg_is_none):
     code = g_frame.f_code
     #if dbg == code.co_name: errSL('GTRACE:', g_event, g_frame.f_lineno, code.co_name)
     if g_event != 'call': return None
@@ -177,7 +177,7 @@ def install_trace(targets, dbg):
     # which is saved and restored when resuming from a `yield`.
     edges = code_edges[code]
     prev_off  = OFF_BEGIN
-    def cove_local_tracer(frame, event, arg):
+    def coven_local_tracer(frame, event, arg):
       nonlocal prev_off
       line = frame.f_lineno
       off = frame.f_lasti
@@ -185,9 +185,9 @@ def install_trace(targets, dbg):
       if event in ('instruction', 'line'):
         edges.add((prev_off, off, line))
         prev_off = off
-      return cove_local_tracer # local tracer keeps itself in place during its local scope.
+      return coven_local_tracer # local tracer keeps itself in place during its local scope.
 
-    return cove_local_tracer # global tracer installs a new local tracer for every call.
+    return coven_local_tracer # global tracer installs a new local tracer for every call.
 
   settraceinst(cove_global_tracer, 1)
   return code_edges
