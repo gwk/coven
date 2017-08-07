@@ -608,7 +608,7 @@ def is_SF_exc_opt(nxt, insts, path, code_name):
 
   However, for a try/finally, there is no SETUP_EXCEPT, so SETUP_FINALLY does emit.
 
-  Unfortunately for us there is a pathological case, "TF-TE-R":
+  Unfortunately for us there is a pathological case, "TF-TE":
   try:
     try: ...
     except: ...
