@@ -181,7 +181,7 @@ def install_trace(targets, dbg):
       nonlocal prev_off
       line = frame.f_lineno
       off = frame.f_lasti
-      #errSL(f'LTRACE: {event} {prev_off} -> {off} ({line}) {code.co_name}')
+      #errSL(f'LTRACE: {code.co_name} {event[:4]} {prev_off:2} -> {off:2}; line:{line}')
       if event in ('instruction', 'line'):
         edges.add((prev_off, off, line))
         prev_off = off
