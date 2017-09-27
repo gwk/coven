@@ -114,7 +114,7 @@ def trace_cmd(cmd, arg_targets, output_path, args):
       try: path = sys.modules[target].__file__
       except KeyError: path = None
     target_paths[target] = path
-    if args.dbg: errSL(f'target_paths: {t} -> {p}')
+    if args.dbg: errSL(f'target_paths: {target} -> {path}')
 
   # Group code by path; this is necessary for per-file display,
   # and also lets us store code belonging to __main__ by absolute path,
