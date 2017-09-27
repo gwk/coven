@@ -15,7 +15,7 @@ from inspect import getmodule
 from itertools import chain
 from os.path import abspath as abs_path, join as path_join, normpath as normalize_path
 from runpy import run_path
-from sys import exc_info, settracestate, stderr, stdout
+from sys import exc_info, settrace, stderr, stdout
 from types import CodeType
 
 
@@ -97,7 +97,7 @@ def trace_cmd(cmd, arg_targets, output_path, args):
     fixup_traceback(traceback)
     print(*traceback.format(), sep='', end='', file=stderr)
   finally:
-    settracestate(None)
+    settrace(None)
     stdout.flush()
     stderr.flush()
   sys.argv = orig_argv
@@ -173,6 +173,10 @@ def install_trace(targets, dbg):
 
     if not is_target: return None # do not trace this scope.
 
+    # set tracing mode.
+    g_frame.f_trace_lines = False
+    g_frame.f_trace_opcodes = True
+
     # the local tracer lives only as long as execution continues within the code block.
     # for a generator, this can be less than the lifetime of the frame,
     # which is saved and restored when resuming from a `yield`.
@@ -182,15 +186,15 @@ def install_trace(targets, dbg):
       nonlocal prev_off
       line = frame.f_lineno
       off = frame.f_lasti
-      #errSL(f'LTRACE: {code.co_name} {event[:4]} {prev_off:2} -> {off:2}; line:{line}')
-      if event in ('instruction', 'line'):
+      #errSL(f'LTRACE: {code.co_name} {event[:6]} {prev_off:2} -> {off:2}; line:{line}')
+      if event == 'opcode':
         edges.add((prev_off, off, line))
         prev_off = off
       return coven_local_tracer # local tracer keeps itself in place during its local scope.
 
     return coven_local_tracer # global tracer installs a new local tracer for every call.
 
-  settracestate(coven_global_tracer, trace_instructions=True)
+  settrace(coven_global_tracer)
   return code_edges
 
 
