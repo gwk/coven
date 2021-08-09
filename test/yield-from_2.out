@@ -1,4 +1,4 @@
 ----------------
 Coverage Report:
 
-__main__: yield-from_{}.py: 19 lines; 5 trivial; 14 traceable; 13 covered; 1 ignored; 0 ignored but covered; 0 not covered.
+__main__: yield-from_{}.py: 15 traceable; 13 covered; 1 ignored; 0 ignored but covered; 0 not covered.

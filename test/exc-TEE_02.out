@@ -10,4 +10,4 @@ __main__: exc-TEE_{}.py:
    8 !     exc()
    9     except E2:
 
-__main__: exc-TEE_{}.py: 12 lines; 3 trivial; 9 traceable; 7 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TEE_{}.py: 9 traceable; 7 covered; 0 ignored; 0 ignored but covered; 2 not covered.

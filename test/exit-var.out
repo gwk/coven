@@ -1,0 +1,10 @@
+----------------
+Coverage Report:
+
+__main__: exit-var.py:
+   1   def f(e):
+   2     exit(e)
+   3
+   4 % f(0)
+
+__main__: exit-var.py: 3 traceable; 2 covered; 0 ignored; 0 ignored but covered; 1 not covered.

@@ -2,4 +2,12 @@ handle_args: char:1; exception: TestException().
 ----------------
 Coverage Report:
 
-__main__: exc-TF-TXR_{}.py: 15 lines; 4 trivial; 11 traceable; 11 covered; 0 ignored; 0 ignored but covered; 0 not covered.
+__main__: exc-TF-TXR_{}.py:
+  13       fin()
+  14
+  15
+  16   def try2(arg):
+  17 %   if arg == 0: return 0
+  18     if arg == 1: return 1
+
+__main__: exc-TF-TXR_{}.py: 15 traceable; 14 covered; 0 ignored; 0 ignored but covered; 1 not covered.

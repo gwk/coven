@@ -1,4 +1,3 @@
-
 from sys import argv
 
 
@@ -19,4 +18,4 @@ def for_(): pass
 def else_(): pass
 
 
-for a in argv[1]: top(int(a))
+for c in argv[1]: top(int(c))

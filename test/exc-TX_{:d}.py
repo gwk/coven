@@ -1,5 +1,5 @@
+from fixtures import exc, handle_args, try_
 
-from fixtures import *
 
 def top(arg):
   try:

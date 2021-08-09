@@ -6,10 +6,17 @@ __main__: exc-TF-TXR_{}.py:
    4   def top(arg):
    5     try:
    6       try:
-   7         try_(arg, raise_start=2)
+   7         try2(arg)
    8 !     except:
    9 !       exc()
   10 %     if arg == 1:
-  11         raise TestException # this tests the is_TEF heuristic.
+  11         raise TestException
+ ...
+  15
+  16   def try2(arg):
+  17     if arg == 0: return 0
+  18     if arg == 1: return 1
+  19 !   raise E2
+  20
 
-__main__: exc-TF-TXR_{}.py: 15 lines; 4 trivial; 11 traceable; 8 covered; 0 ignored; 0 ignored but covered; 3 not covered.
+__main__: exc-TF-TXR_{}.py: 15 traceable; 11 covered; 0 ignored; 0 ignored but covered; 4 not covered.

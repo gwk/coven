@@ -1,0 +1,11 @@
+{
+  "include": ["coven"],
+  "exclude": ["_build", "_misc"],
+  "pythonVersion": "3.10",
+  "reportSelfClsParameterName": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportInvalidTypeVarUse": "none",
+  "reportPropertyTypeMismatch": "none",
+  "reportUnboundVariable": "none",
+  "reportMissingImports": false,
+}

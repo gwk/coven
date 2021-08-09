@@ -1,4 +1,3 @@
-
 from sys import argv
 
 
@@ -21,4 +20,4 @@ def partial(on):
   return -1 # never covered; this test assures that previous annotation is terminated.
 
 
-for a in argv[1]: top(int(a))
+for c in argv[1]: top(int(c))

@@ -1,4 +1,4 @@
 def f():
   exit()
 
-f()
+f() #!cov-ignore.

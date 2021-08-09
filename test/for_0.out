@@ -2,22 +2,22 @@
 Coverage Report:
 
 __main__: for_{}.py:
+   2
    3
-   4
-   5   def top(arg):
-   6
-   7 %   for i in range(arg):
-   8 !     for_()
-   9
-  10 %   for i in range(arg):
-  11 !     for_()
-  12 !     if i:
-  13 !       break
-  14     else:
-  15       else_()
+   4   def top(arg):
+   5
+   6 %   for i in range(arg):
+   7 !     for_()
+   8
+   9 %   for i in range(arg):
+  10 !     for_()
+  11 !     if i:
+  12 !       break
+  13     else:
+  14       else_()
+  15
   16
-  17
-  18 % def for_(): pass
-  19   def else_(): pass
+  17 % def for_(): pass
+  18   def else_(): pass
 
-__main__: for_{}.py: 22 lines; 10 trivial; 12 traceable; 5 covered; 0 ignored; 0 ignored but covered; 7 not covered.
+__main__: for_{}.py: 12 traceable; 5 covered; 0 ignored; 0 ignored but covered; 7 not covered.

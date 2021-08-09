@@ -2,13 +2,18 @@
 Coverage Report:
 
 __main__: exc-TF-TXR_{}.py:
-   7         try_(arg, raise_start=2)
+   7         try2(arg)
    8       except:
    9         exc()
   10       if arg == 1:
-  11 !       raise TestException # this tests the is_TEF heuristic.
+  11 !       raise TestException
   12     finally:
-  13 %     fin()
+  13       fin()
   14
+  15
+  16   def try2(arg):
+  17     if arg == 0: return 0
+  18 %   if arg == 1: return 1
+  19     raise E2
 
-__main__: exc-TF-TXR_{}.py: 15 lines; 4 trivial; 11 traceable; 9 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TF-TXR_{}.py: 15 traceable; 13 covered; 0 ignored; 0 ignored but covered; 2 not covered.

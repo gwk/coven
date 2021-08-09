@@ -2,14 +2,14 @@
 Coverage Report:
 
 __main__: exc-TA-ret_{}.py:
-   7   from fixtures import *
    8
-   9   def top(arg):
-  10     try:
-  11 %     try_(arg)
-  12     except E1 as e1:
-  13       return True
-  14 !   return False
-  15
+   9
+  10   def top(arg):
+  11     try:
+  12 %     try_(arg)
+  13     except E1 as e1:
+  14       return True
+  15 !   return False
+  16
 
-__main__: exc-TA-ret_{}.py: 16 lines; 8 trivial; 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TA-ret_{}.py: 9 traceable; 7 covered; 0 ignored; 0 ignored but covered; 2 not covered.

@@ -1,4 +1,22 @@
 ----------------
 Coverage Report:
 
-__main__: basic_{}.py: 16 lines; 7 trivial; 9 traceable; 9 covered; 0 ignored; 0 ignored but covered; 0 not covered.
+__main__: basic_{}.py:
+  10     if arg:
+  11       inlined()
+  12       multi()
+  13
+  14 %   if arg:
+  15       f()
+  16     else:
+  17 !     g()
+  18
+ ...
+  24
+  25   def f(): pass
+  26
+  27   def g():
+  28 !   pass
+  29
+
+__main__: basic_{}.py: 15 traceable; 12 covered; 0 ignored; 0 ignored but covered; 3 not covered.

@@ -1,10 +1,9 @@
 from sys import argv
 
+
 '''
-This tests the FOR_ITER exception edge.
-It is unusual because we are converting jump edges (rather than raises) to exception edges,
-and because the static exception edge is given a real line number (that of FOR_ITER).
-Without the real line number, non-raising iterators will get misreported.
+These tests exercised FOR_ITER cases that were tricky when coven was first written for python 3.7.
+Their efficacy has yet to be evaluated for 3.10.
 '''
 
 def dummy(): pass # add non-trivial loop body and return to make sure that StopIteration gets the right line.

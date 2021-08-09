@@ -1,28 +1,37 @@
-
 from sys import argv
 
 
-def top(arg):
-
+def test_if(i:int) -> None:
   r_if = 0
-  if arg: r_if = (1 if arg == 1 else arg)
-  else: r_if == arg # 0 case only.
+  if i: r_if = (1 if i == 1 else i)
+  else: r_if == i # 0 case only.
 
+
+def test_while(i:int) -> None:
   r_while = 0
-  i = arg
-  while i: r_while = (1 if arg == 1 else arg); i -= 1
+  i = i
+  while i: r_while = (1 if i == 1 else i); i -= 1
 
+
+def test_for(i:int) -> None:
   r_for = 0
-  for i in range(arg): r_for = (1 if arg == 1 else arg)
-
-  try: raises_if(arg)
-  except Exception: r_exc = (1 if arg == 1 else arg)
-  else: r_exc = arg # 0 case only.
-  finally: r_fin = (1 if arg == 1 else arg)
+  for i in range(i): r_for = (1 if i == 1 else i)
 
 
-def raises_if(arg):
-  if arg: raise Exception(arg)
+def test_TEEF(i:int) -> None:
+  try: raises_if(i)
+  except Exception: r_exc = (1 if i == 1 else i)
+  else: r_exc = i # 0 case only.
+  finally: r_fin = (1 if i == 1 else i)
 
 
-for a in argv[1]: top(int(a))
+def raises_if(i:int) -> None:
+  if i: raise Exception(i)
+
+
+for c in argv[1]:
+  i = int(c)
+  test_if(i)
+  test_while(i)
+  test_for(i)
+  test_TEEF(i)

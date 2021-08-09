@@ -2,11 +2,15 @@
 Coverage Report:
 
 __main__: exc-W-TF_{}.py:
-   4     with CM(False):
-   5       try:
-   6         return try_(arg)
-   7       finally:
-   8 %       return -1
-   9
+   1   from fixtures import CM, handle_args, try_
+   2
+   3
+   4   def top(arg):
+   5 %   with CM(silence=False):
+   6       try:
+   7         return try_(arg)
+   8       finally:
+   9 %       return -1
+  10     return res
 
-__main__: exc-W-TF_{}.py: 10 lines; 3 trivial; 7 traceable; 6 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: exc-W-TF_{}.py: 7 traceable; 5 covered; 0 ignored; 0 ignored but covered; 2 not covered.

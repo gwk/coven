@@ -5,8 +5,9 @@ Coverage Report:
 __main__: genexpr_{}.py:
    1   from sys import argv
    2
-   3   def not_all(args):
-   4 %   return all(int(a) for a in args)
-   5
+   3
+   4   def not_all(args):
+   5 %   return all(int(a) for a in args)
+   6
 
-__main__: genexpr_{}.py: 6 lines; 2 trivial; 4 traceable; 3 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: genexpr_{}.py: 5 traceable; 3 covered; 0 ignored; 0 ignored but covered; 1 not covered.

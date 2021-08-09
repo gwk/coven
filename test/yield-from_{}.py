@@ -1,4 +1,5 @@
-from fixtures import *
+from fixtures import handle_args
+
 
 def gen():
   for i in range(1):
@@ -13,7 +14,7 @@ def yield_from_gen():
 def top(arg):
   yfr = yield_from_range()
   yfg = yield_from_gen()
-  for i in range(arg):
+  for _ in range(arg): # Iterate a specified number of steps, to test early exit and exhaustion of the generators.
     assert next(yfr, None) == next(yfg, None)
 
 handle_args(top)

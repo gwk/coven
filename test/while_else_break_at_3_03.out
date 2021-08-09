@@ -1,0 +1,20 @@
+Else.
+While.
+----------------
+Coverage Report:
+
+__main__: while_else_break_at_3_{}.py:
+   1   from sys import argv
+   2
+   3
+   4   def while_else(i):
+   5 %   while i:
+   6 %     in_while()
+   7       if i == 3:
+   8         break
+   9 !     i -= 1
+  10     else:
+  11 %     in_else()
+  12
+
+__main__: while_else_break_at_3_{}.py: 12 traceable; 8 covered; 0 ignored; 0 ignored but covered; 4 not covered.

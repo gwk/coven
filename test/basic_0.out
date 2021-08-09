@@ -2,17 +2,25 @@
 Coverage Report:
 
 __main__: basic_{}.py:
-   3
-   4
-   5   def top(arg):
-   6     if arg:
-   7 !     inlined()
-   8 !     multi()
+   7
+   8   def top(arg):
    9
-  10 % def inlined(): return None
-  11
-  12   def multi():
-  13 !   return None
-  14
+  10     if arg:
+  11 !     inlined()
+  12 !     multi()
+  13
+  14 %   if arg:
+  15 !     f()
+  16     else:
+  17       g()
+  18
+  19
+  20 % def inlined(): return None
+  21
+  22   def multi():
+  23 !   return None
+  24
+  25 % def f(): pass
+  26
 
-__main__: basic_{}.py: 16 lines; 7 trivial; 9 traceable; 5 covered; 0 ignored; 0 ignored but covered; 4 not covered.
+__main__: basic_{}.py: 15 traceable; 8 covered; 0 ignored; 0 ignored but covered; 7 not covered.

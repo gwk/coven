@@ -2,15 +2,11 @@
 Coverage Report:
 
 __main__: lnotab_{}.py:
-   4
-   5   x = ''
-   6   def top(a):
-   7     global x
-   8 %   while a:
-   9       x = a
-  10       break
-  11     else:
-  12 !     x = a
-  13
+  12     while a:
+  13       x = a
+  14       break
+  15     else:
+  16 !     x = a
+  17
 
-__main__: lnotab_{}.py: 18 lines; 7 trivial; 11 traceable; 8 covered; 1 ignored; 0 ignored but covered; 2 not covered.
+__main__: lnotab_{}.py: 12 traceable; 10 covered; 1 ignored; 0 ignored but covered; 1 not covered.
