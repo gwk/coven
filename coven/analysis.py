@@ -3,7 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from types import CodeType
-from typing import Any, Iterable, NamedTuple
+from typing import Any, Iterable, NamedTuple, Union
 
 from .disassemble import OFF_RAISED, Code, Disassembly, InstOptReason, Src, disassemble
 from .trace import TraceEdge
@@ -129,23 +129,31 @@ def crawl_code_for_edges(disassembly:Disassembly, dbg:bool) -> tuple[EdgesToLine
   return req, opt
 
 
-def err_edge(label: str, edge: tuple[int,int], name: str) -> None:
-  src, dst = edge
+AnyEdge = Union[TraceEdge,CovTriple]
+
+def any_edge_to_pair(edge: AnyEdge) -> tuple[int,int]:
+  return edge[:2]
+
+
+def err_edge(label:str, edge:AnyEdge, name:str) -> None:
+  src, dst = any_edge_to_pair(edge)
   errL(f'{label} edge: {src:4} -> {dst:4}  {name}')
 
 
 def err_edges(label: str, edges: Iterable[tuple[int,int,Any]], suffix:str='') -> None:
   if suffix: suffix = '  ' + suffix
-  sorted_edges = sorted(edges)
+  sorted_edges = sorted(any_edge_to_pair(e) for e in edges)
   #errSL("ERR_EDGES", len(sorted_edges))
   jump_offs = set()
-  for src, dst, _ in sorted_edges:
+  for edge in sorted_edges:
+    src = edge[0]
+    dst = edge[1]
     if src + 2 < dst: # Jump or extended instruction.
       jump_offs.add(src)
       jump_offs.add(dst)
 
-  start: tuple[int,int,Any]|None = None
-  prev: tuple[int,int,Any] = (0, 0, None) # Dummy value.
+  start: tuple[int,int]|None = None
+  prev: tuple[int,int] = (0, 0) # Dummy value.
 
   def flush() -> None:
     nonlocal start, prev
@@ -153,7 +161,7 @@ def err_edges(label: str, edges: Iterable[tuple[int,int,Any]], suffix:str='') ->
     arrow = '->' if start == prev else '=>'
     errL(f'{label} {start[0]:4} {arrow} {prev[1]:4}  {suffix}')
     start = None
-    prev = (0, 0, None) # Dummy value.
+    prev = (0, 0) # Dummy value.
 
   for edge in sorted_edges:
     if edge[0] + 2 < edge[1]: # Jump or extended instruction (not "straight").
