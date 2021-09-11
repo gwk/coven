@@ -278,6 +278,7 @@ class FrameBlock(Iterable):
 @dataclass
 class Disassembly:
   code: Code
+  off_lines: dict[int,int] # Instruction offsets to line numbers.
   insts: dict[int,Inst]
   basic_blocks: list[BasicBlock]
   frameblocks: list[FrameBlock]
@@ -361,7 +362,8 @@ def disassemble(code:Code, dbg:bool=False) -> Disassembly:
   '''
   if dbg: errSL(f'\ndisassemble: {code.name}')
 
-  insts = build_insts(code) # Step 1: scan raw instructions and convert to our Inst type.
+  off_lines = build_off_lines(code)
+  insts = build_insts(code, off_lines) # Scan raw instructions and convert to our Inst type.
 
   inst_dsts, inst_srcs, frameblock_dsts_to_setups, jumps, exit_offs = build_inst_mappings(insts) # Step 2: instruction mappings.
 
@@ -374,20 +376,24 @@ def disassemble(code:Code, dbg:bool=False) -> Disassembly:
   frameblocks, inst_frameblocks = calc_frameblocks(insts, inst_srcs, frameblock_dsts_to_setups)
   #^ Step 4: compute frameblock stack for each instruction.
 
-  return Disassembly(code=code, insts=insts, basic_blocks=basic_blocks, frameblocks=frameblocks, jumps=jumps,
+  return Disassembly(code=code, off_lines=off_lines, insts=insts, basic_blocks=basic_blocks, frameblocks=frameblocks, jumps=jumps,
     inst_dsts=inst_dsts, inst_srcs=inst_srcs, inst_sal_srcs=inst_sal_srcs, inst_terminals=inst_terminals,
     inst_opt_reasons=inst_opt_reasons, inst_bbs=inst_bbs, inst_frameblocks=inst_frameblocks,
     frameblock_dsts_to_setups=frameblock_dsts_to_setups, exit_offs=exit_offs)
 
 
-def build_insts(code:Code) -> dict[int,Inst]:
-  'Step 1: scan raw instructions and convert to our Inst type.'
-  offset_lines: dict[int,int] = {}
+def build_off_lines(code:Code) -> dict[int,int]:
+  off_lines: dict[int,int] = {}
   for s, e, line in code.raw.co_lines(): # type: ignore
     if line is None: line = 0 # As of PEP 626, some lines get no line number. We convert this to zero for simpler type signatures.
     else: assert line > 0
     for off in range(s, e):
-      offset_lines[off] = line
+      off_lines[off] = line
+  return off_lines
+
+
+def build_insts(code:Code, off_lines:dict[int,int]) -> dict[int,Inst]:
+  'Scan raw instructions and convert to our Inst type.'
 
   # We have two pseudo-instructions that normal and exception entry.
   insts: dict[int,Inst] = { i.off : i for i in (raised_inst, begin_inst) }
@@ -408,7 +414,7 @@ def build_insts(code:Code) -> dict[int,Inst]:
 
     # If there were EXTENDED_ARGs, then use the first offset, since that is what opcode tracing emits.
     off = i.offset if first_extended_arg_off is None else first_extended_arg_off
-    line = offset_lines[off]
+    line = off_lines[off]
 
     inst = Inst(off=off, off_ext=first_extended_arg_off, line=line, op=i.opcode, arg=i.argval)
     insts[off] = inst

@@ -17,7 +17,7 @@ from .util import errSL
 from .disassemble import OFF_BEGIN
 
 
-TraceEdge = tuple[int,int,int] # (prev_off, off, line)
+TraceEdge = tuple[int,int] # (prev_off, off)
 #^ The raw trace data that we collect during execution.
 
 @dataclass
@@ -153,11 +153,10 @@ def install_trace(targets: set[str], dbg_name: bool) -> defaultdict[CodeType,set
     prev_off  = OFF_BEGIN
     def coven_local_tracer(frame: FrameType, event: str, arg: Any) -> TraceFn|None:
       nonlocal prev_off
-      line = frame.f_lineno or 0 # As of PEP 626, some lines are None. We convert them to 0.
       off = frame.f_lasti
-      #errSL(f'LTRACE: {code.co_name}:{line} {event[:6]} {prev_off:2} -> {off:2}  arg: {arg}')
+      #errSL(f'LTRACE: {code.co_name}:{frame.f_lineno} {event[:6]} {prev_off:2} -> {off:2}  arg: {arg}')
       if event == 'opcode':
-        edges.add((prev_off, off, line))
+        edges.add((prev_off, off))
         prev_off = off
       return coven_local_tracer # Local tracer keeps itself in place during its local scope.
 

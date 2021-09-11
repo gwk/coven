@@ -65,10 +65,9 @@ def calculate_coverage(code_src: Src, code_traced_edges: dict[CodeType,set[Trace
     raise_reqs = { edge[1] : (edge, lines) for edge, lines in req.items() if edge[0] == OFF_RAISED }
     raise_opts = { edge[1] for edge in opt if edge[0] == OFF_RAISED }
     matched = defaultdict(set) # expected exception edges that matched an actual traced edge.
-    for trace_edge in traced:
-      edge = trace_edge[:2]
-      dst_off = trace_edge[1]
-      line = trace_edge[2]
+    for edge in traced:
+      dst_off = edge[1]
+      line = disassembly.off_lines[dst_off]
       if edge in req:
         matched[edge].add(line)
       elif dst_off in raise_reqs:
@@ -140,7 +139,7 @@ def err_edge(label:str, edge:AnyEdge, name:str) -> None:
   errL(f'{label} edge: {src:4} -> {dst:4}  {name}')
 
 
-def err_edges(label: str, edges: Iterable[tuple[int,int,Any]], suffix:str='') -> None:
+def err_edges(label: str, edges: Iterable[AnyEdge], suffix:str='') -> None:
   if suffix: suffix = '  ' + suffix
   sorted_edges = sorted(any_edge_to_pair(e) for e in edges)
   #errSL("ERR_EDGES", len(sorted_edges))
