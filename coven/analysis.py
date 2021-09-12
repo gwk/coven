@@ -10,17 +10,17 @@ from .trace import TraceEdge
 from .util import errL, errLL, errSL, visit_nodes
 
 
-CovTriple = tuple[int,int,CodeType] # (src_off:int, dst_off:int, code:CodeType).
+CovEdge = tuple[int,int,CodeType] # (src_off:int, dst_off:int, code:CodeType).
 
 
 class ReqMatchedSetPairs(NamedTuple):
-  req: set[CovTriple]
-  opt: set[CovTriple]
+  req: set[CovEdge]
+  opt: set[CovEdge]
 
 @dataclass
 class Coverage:
   '''
-  `line_sets` maps line numbers to (required, matched) pairs of sets of CovTriple (src_off:int, dst_off:int, code:CodeType).
+  `line_sets` maps line numbers to (required, matched) pairs of sets of CovEdge (src_off:int, dst_off:int, code:CodeType).
   Each set contains Edge tuples.
   An Edge is (prev_offset, offset, code).
   A line is fully covered if (required <= traced).
@@ -61,33 +61,43 @@ def calculate_coverage(code_src: Src, code_traced_edges: dict[CodeType,set[Trace
     req, opt = crawl_code_for_edges(disassembly=disassembly, dbg=dbg)
 
     # match traced to inferred edges.
+    # "Exception edges" are those with src == OFF_RAISED.
+    # They represent the start of an exception handling trace as inferred by `Disassembly` and `crawl_code_for_edges`.
+    # The tracer does not generate these edges exactly,
+    # as the src offset will be the offset of the real instruction that raised the exception.
+    # We have to convert them to the simplified exception edges, or else they would appear to be unexpected,
+    # and exception flows would appear uncovered.
 
-    raise_reqs = { edge[1] : (edge, lines) for edge, lines in req.items() if edge[0] == OFF_RAISED }
+    raise_reqs = { edge[1] for edge in req if edge[0] == OFF_RAISED }
     raise_opts = { edge[1] for edge in opt if edge[0] == OFF_RAISED }
-    matched = defaultdict(set) # expected exception edges that matched an actual traced edge.
+
+    off_lines = disassembly.off_lines
+    matched = set[TraceEdge]() # Expected exception edges (src == OFF_RAISED) that replace an actual traced edge.
     for edge in traced:
+      assert len(edge) == 2 # TraceEdge.
       dst_off = edge[1]
-      line = disassembly.off_lines[dst_off]
+      line = off_lines[dst_off]
       if edge in req:
-        matched[edge].add(line)
+        matched.add(edge)
       elif dst_off in raise_reqs:
-        e, l = raise_reqs[dst_off]
-        matched[e].update(l) # add all the lines (really just one line?) implied by the exception edge.
+        #err_edge('RAISE EDGE:', edge[:2], code.name)
+        raise_edge = (OFF_RAISED, dst_off)
+        matched.add(raise_edge)
       elif not (edge in opt or dst_off in raise_opts):
         err_edge('UNEXPECTED:', edge, code.name)
         errSL(*raise_reqs)
 
     # assemble final coverage data by line.
 
-    for edge, lines in req.items():
-      for line in lines:
-        assert line >= 0, (edge, line)
-        line_sets_dd[line][COV_REQ].add((edge[0], edge[1], code.raw))
+    for src, dst in req:
+      line = off_lines[dst]
+      assert line >= 0, (src, dst, line)
+      line_sets_dd[line][COV_REQ].add((src, dst, code.raw))
 
-    for edge, lines in matched.items():
-      for line in lines:
-        assert line >= 0, (edge, line)
-        line_sets_dd[line][COV_MATCHED].add((edge[0], edge[1], code.raw))
+    for src, dst in matched:
+      line = off_lines[dst]
+      assert line >= 0, (src, dst, line)
+      line_sets_dd[line][COV_MATCHED].add((src, dst, code.raw))
 
   line_sets = dict(line_sets_dd)
   return Coverage(all_codes=all_codes, line_sets=line_sets)
@@ -95,9 +105,9 @@ def calculate_coverage(code_src: Src, code_traced_edges: dict[CodeType,set[Trace
 
 COV_REQ, COV_MATCHED = range(2)
 
-EdgesToLines = defaultdict[tuple[int,int], set[int]]
+Edge = tuple[int,int]
 
-def crawl_code_for_edges(disassembly:Disassembly, dbg:bool) -> tuple[EdgesToLines, EdgesToLines]:
+def crawl_code_for_edges(disassembly:Disassembly, dbg:bool) -> tuple[set[Edge],set[Edge]]:
   '''
   Given a code block, construct a pair of (req, opt) mappings.
   Each maps ? to ?.
@@ -108,27 +118,19 @@ def crawl_code_for_edges(disassembly:Disassembly, dbg:bool) -> tuple[EdgesToLine
   inst_srcs = disassembly.inst_srcs
   inst_opt_reasons = disassembly.inst_opt_reasons
 
-  # Emit edges for each basic block, taking care to represent lines as they will be traced.
-  req: EdgesToLines = defaultdict(set) # Maps edges to sets of lines.
-  opt: EdgesToLines = defaultdict(set) # Ditto.
-
-  def add_edge(edge: tuple[int,int], line: int, is_req: bool) -> None:
-    #if dbg: err_edge('   ' + ("req" if is_req else "opt"), edge, disassembly.short_name)
-    (req if is_req else opt)[edge].add(line)
+  req = set[Edge]() # Required edges.
+  opt = set[Edge]() # Optional edges.
 
   for inst in insts.values():
     if inst.off < 0: continue # Skip the raised_inst and begin_inst pseudo-instructions.
-    srcs = inst_srcs[inst]
     is_req = (inst_opt_reasons[inst] == InstOptReason.REQ)
-    #if dbg: errL(f'BB: {bb}; srcs: {sorted(i.off for i in srcs)}')
-    #assert srcs, (inst, srcs)
-    for src in srcs:
-      add_edge((src.off, inst.off), line=inst.line, is_req=is_req)
+    for src in inst_srcs[inst]:
+      (req if is_req else opt).add((src.off, inst.off))
 
   return req, opt
 
 
-AnyEdge = Union[TraceEdge,CovTriple]
+AnyEdge = Union[TraceEdge,CovEdge]
 
 def any_edge_to_pair(edge: AnyEdge) -> tuple[int,int]:
   return edge[:2]
