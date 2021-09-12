@@ -42,7 +42,8 @@ def calculate_coverage(code_src: Src, code_traced_edges: dict[CodeType,set[Trace
 
   all_raw_codes: list[CodeType] = list(visit_nodes(start_nodes=code_traced_edges, visitor=sub_codes_raw)) # Collect all of the reachable code objects.
   all_codes = [Code(src=code_src, raw=r) for r in all_raw_codes]
-  if dbg_name: all_codes.sort() # In debug mode, sort them for reproduceability.
+
+  if dbg_name: all_codes.sort() # In debug mode, sort for reproduceability.
 
   line_sets_dd: defaultdict[int,ReqMatchedSetPairs] = defaultdict(lambda: ReqMatchedSetPairs(set(), set()))
   #^ Keyed by line number.
@@ -50,16 +51,17 @@ def calculate_coverage(code_src: Src, code_traced_edges: dict[CodeType,set[Trace
   for code in all_codes:
     dbg = (code.raw.co_name == dbg_name)
     disassembly: Disassembly = disassemble(code, dbg=dbg)
-    if dbg:
-      errLL(*disassembly.render(show_src=True)) # TODO: support -no-src option?
+
+    if dbg: errLL(*disassembly.render(show_src=True)) # TODO: support -no-src option?
 
     try: traced:set[TraceEdge] = code_traced_edges[code.raw]
     except KeyError: traced = set()
+    if dbg: err_edges('traced:', traced, suffix=code.raw.co_name)
 
     req, opt = crawl_code_for_edges(disassembly=disassembly, dbg=dbg)
-    if dbg:
-      err_edges('traced:', traced, suffix=code.raw.co_name)
+
     # match traced to inferred edges.
+
     raise_reqs = { edge[1] : (edge, lines) for edge, lines in req.items() if edge[0] == OFF_RAISED }
     raise_opts = { edge[1] for edge in opt if edge[0] == OFF_RAISED }
     matched = defaultdict(set) # expected exception edges that matched an actual traced edge.
