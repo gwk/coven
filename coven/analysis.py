@@ -34,15 +34,14 @@ def sub_codes_raw(code: CodeType) -> list[CodeType]:
   return [c for c in code.co_consts if isinstance(c, CodeType)]
 
 
-def calculate_coverage(path: str, code_traced_edges: dict[CodeType,set[TraceEdge]], dbg_name: str) -> Coverage:
+def calculate_coverage(code_src: Src, code_traced_edges: dict[CodeType,set[TraceEdge]], dbg_name: str) -> Coverage:
   '''
   Calculate and return the coverage data structure.
   '''
-  if dbg_name: errSL(f'\ncalculate_coverage: {path}:')
+  if dbg_name: errSL(f'\ncalculate_coverage: {code_src.path}:')
 
   all_raw_codes: list[CodeType] = list(visit_nodes(start_nodes=code_traced_edges, visitor=sub_codes_raw)) # Collect all of the reachable code objects.
-  src = Src.from_path(path=path)
-  all_codes = [Code(src=src, raw=r) for r in all_raw_codes]
+  all_codes = [Code(src=code_src, raw=r) for r in all_raw_codes]
   if dbg_name: all_codes.sort() # In debug mode, sort them for reproduceability.
 
   line_sets_dd: defaultdict[int,ReqMatchedSetPairs] = defaultdict(lambda: ReqMatchedSetPairs(set(), set()))

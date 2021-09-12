@@ -15,6 +15,7 @@ from sys import stdout
 from types import CodeType
 
 from .analysis import calculate_coverage
+from .disassemble import Src
 from .report import Stats, report_path
 from .trace import TraceEdge, trace_cmd
 
@@ -127,7 +128,8 @@ def report(target_path_lists: dict[str,list[str]], path_code_edges: dict[str,dic
       print(f'\n{target}: NEVER IMPORTED.')
       continue
     for path in paths:
-      coverage = calculate_coverage(path=path, code_traced_edges=path_code_edges[path], dbg_name=args.block)
+      code_src = Src.from_path(path=path)
+      coverage = calculate_coverage(code_src=code_src, code_traced_edges=path_code_edges[path], dbg_name=args.block)
       report_path(target=target, path=path, coverage=coverage, totals=totals, args=args)
   if sum(len(paths) for paths in target_path_lists.values()) > 1:
     totals.describe('\nTOTAL', args.color)
