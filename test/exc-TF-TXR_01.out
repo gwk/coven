@@ -2,7 +2,7 @@ handle_args: char:1; exception: TestException().
 ----------------
 Coverage Report:
 
-__main__: exc-TF-TXR_{}.py:
+__main__: exc-TF-TXR_%s.py:
    4   def top(arg):
    5     try:
    6       try:
@@ -19,4 +19,4 @@ __main__: exc-TF-TXR_{}.py:
   19 !   raise E2
   20
 
-__main__: exc-TF-TXR_{}.py: 15 traceable; 11 covered; 0 ignored; 0 ignored but covered; 4 not covered.
+__main__: exc-TF-TXR_%s.py: 15 traceable; 11 covered; 0 ignored; 0 ignored but covered; 4 not covered.

@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: exc-W-TX_{}.py:
+__main__: exc-W-TX_%s.py:
    1   from fixtures import CM, handle_args, try_
    2
    3
@@ -11,4 +11,4 @@ __main__: exc-W-TX_{}.py:
    7 %       return try_(arg)
    8       except:
 
-__main__: exc-W-TX_{}.py: 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-W-TX_%s.py: 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.

@@ -3,7 +3,7 @@ While.
 ----------------
 Coverage Report:
 
-__main__: while_else_break_at_3_{}.py:
+__main__: while_else_break_at_3_%s.py:
    1   from sys import argv
    2
    3
@@ -17,4 +17,4 @@ __main__: while_else_break_at_3_{}.py:
   11 %     in_else()
   12
 
-__main__: while_else_break_at_3_{}.py: 12 traceable; 8 covered; 0 ignored; 0 ignored but covered; 4 not covered.
+__main__: while_else_break_at_3_%s.py: 12 traceable; 8 covered; 0 ignored; 0 ignored but covered; 4 not covered.

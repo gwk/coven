@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: lnotab_{}.py:
+__main__: lnotab_%s.py:
   12     while a:
   13       x = a
   14       break
@@ -9,4 +9,4 @@ __main__: lnotab_{}.py:
   16 !     x = a
   17
 
-__main__: lnotab_{}.py: 12 traceable; 10 covered; 1 ignored; 0 ignored but covered; 1 not covered.
+__main__: lnotab_%s.py: 12 traceable; 10 covered; 1 ignored; 0 ignored but covered; 1 not covered.

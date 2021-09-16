@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: exc-TEL_{}.py:
+__main__: exc-TEL_%s.py:
    2
    3
    4   def top(arg):
@@ -13,4 +13,4 @@ __main__: exc-TEL_{}.py:
   10 !     else_()
   11
 
-__main__: exc-TEL_{}.py: 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TEL_%s.py: 8 traceable; 6 covered; 0 ignored; 0 ignored but covered; 2 not covered.

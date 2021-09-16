@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: exc-TF-TXR_{}.py:
+__main__: exc-TF-TXR_%s.py:
    7         try2(arg)
    8       except:
    9         exc()
@@ -16,4 +16,4 @@ __main__: exc-TF-TXR_{}.py:
   18 %   if arg == 1: return 1
   19     raise E2
 
-__main__: exc-TF-TXR_{}.py: 15 traceable; 13 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TF-TXR_%s.py: 15 traceable; 13 covered; 0 ignored; 0 ignored but covered; 2 not covered.

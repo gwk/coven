@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: for_{}.py:
+__main__: for_%s.py:
    8
    9     for i in range(arg):
   10       for_()
@@ -9,4 +9,4 @@ __main__: for_{}.py:
   12 !       break
   13     else:
 
-__main__: for_{}.py: 12 traceable; 11 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: for_%s.py: 12 traceable; 11 covered; 0 ignored; 0 ignored but covered; 1 not covered.

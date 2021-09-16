@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: exc-W-TF_{}.py:
+__main__: exc-W-TF_%s.py:
    1   from fixtures import CM, handle_args, try_
    2
    3
@@ -13,4 +13,4 @@ __main__: exc-W-TF_{}.py:
    9 %       return -1
   10     return res
 
-__main__: exc-W-TF_{}.py: 7 traceable; 5 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-W-TF_%s.py: 7 traceable; 5 covered; 0 ignored; 0 ignored but covered; 2 not covered.

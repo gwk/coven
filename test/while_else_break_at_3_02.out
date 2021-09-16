@@ -5,7 +5,7 @@ Else.
 ----------------
 Coverage Report:
 
-__main__: while_else_break_at_3_{}.py:
+__main__: while_else_break_at_3_%s.py:
    4   def while_else(i):
    5     while i:
    6       in_while()
@@ -13,4 +13,4 @@ __main__: while_else_break_at_3_{}.py:
    8 !       break
    9       i -= 1
 
-__main__: while_else_break_at_3_{}.py: 12 traceable; 11 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: while_else_break_at_3_%s.py: 12 traceable; 11 covered; 0 ignored; 0 ignored but covered; 1 not covered.

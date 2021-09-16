@@ -2,7 +2,7 @@ False
 ----------------
 Coverage Report:
 
-__main__: genexpr_{}.py:
+__main__: genexpr_%s.py:
    1   from sys import argv
    2
    3
@@ -10,4 +10,4 @@ __main__: genexpr_{}.py:
    5 %   return all(int(a) for a in args)
    6
 
-__main__: genexpr_{}.py: 5 traceable; 3 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: genexpr_%s.py: 5 traceable; 3 covered; 0 ignored; 0 ignored but covered; 1 not covered.

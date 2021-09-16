@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: inline_{}.py:
+__main__: inline_%s.py:
    2
    3
    4   def test_if(i:int) -> None:
@@ -26,4 +26,4 @@ __main__: inline_{}.py:
   23 %   except Exception: r_exc = (1 if i == 1 else i)
   24     else: r_exc = i # 0 case only.
 
-__main__: inline_{}.py: 26 traceable; 21 covered; 0 ignored; 0 ignored but covered; 4 not covered.
+__main__: inline_%s.py: 26 traceable; 21 covered; 0 ignored; 0 ignored but covered; 4 not covered.

@@ -2,7 +2,7 @@
 ----------------
 Coverage Report:
 
-__main__: yield_{}.py:
+__main__: yield_%s.py:
    2
    3
    4   def yield_(stop):
@@ -10,4 +10,4 @@ __main__: yield_{}.py:
    6 %     if i == stop: break
    7       yield i
 
-__main__: yield_{}.py: 9 traceable; 7 covered; 0 ignored; 0 ignored but covered; 1 not covered.
+__main__: yield_%s.py: 9 traceable; 7 covered; 0 ignored; 0 ignored but covered; 1 not covered.

@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: yield-from_{}.py:
+__main__: yield-from_%s.py:
    1   from fixtures import handle_args
    2
    3
@@ -21,4 +21,4 @@ __main__: yield-from_{}.py:
   17 %   for _ in range(arg): # Iterate a specified number of steps, to test early exit and exhaustion of the generators.
   18 |     assert next(yfr, None) == next(yfg, None)
 
-__main__: yield-from_{}.py: 15 traceable; 8 covered; 1 ignored; 0 ignored but covered; 5 not covered.
+__main__: yield-from_%s.py: 15 traceable; 8 covered; 1 ignored; 0 ignored but covered; 5 not covered.

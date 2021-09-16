@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: basic_{}.py:
+__main__: basic_%s.py:
    7
    8   def top(arg):
    9
@@ -23,4 +23,4 @@ __main__: basic_{}.py:
   25 % def f(): pass
   26
 
-__main__: basic_{}.py: 15 traceable; 8 covered; 0 ignored; 0 ignored but covered; 7 not covered.
+__main__: basic_%s.py: 15 traceable; 8 covered; 0 ignored; 0 ignored but covered; 7 not covered.

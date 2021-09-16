@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: lnotab_{}.py:
+__main__: lnotab_%s.py:
    9   x = ''
   10   def top(a):
   11     global x
@@ -10,4 +10,4 @@ __main__: lnotab_{}.py:
   14 !     break
   15     else:
 
-__main__: lnotab_{}.py: 12 traceable; 9 covered; 1 ignored; 0 ignored but covered; 2 not covered.
+__main__: lnotab_%s.py: 12 traceable; 9 covered; 1 ignored; 0 ignored but covered; 2 not covered.

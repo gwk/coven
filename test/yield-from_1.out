@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: yield-from_{}.py:
+__main__: yield-from_%s.py:
    1   from fixtures import handle_args
    2
    3
@@ -16,4 +16,4 @@ __main__: yield-from_{}.py:
   12 %   yield from gen()
   13
 
-__main__: yield-from_{}.py: 15 traceable; 9 covered; 1 ignored; 0 ignored but covered; 4 not covered.
+__main__: yield-from_%s.py: 15 traceable; 9 covered; 1 ignored; 0 ignored but covered; 4 not covered.

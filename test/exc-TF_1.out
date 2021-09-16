@@ -2,7 +2,7 @@ handle_args: char:1; exception: E1().
 ----------------
 Coverage Report:
 
-__main__: exc-TF_{:d}.py:
+__main__: exc-TF_%s.py:
    2
    3
    4   def top(arg):
@@ -12,4 +12,4 @@ __main__: exc-TF_{:d}.py:
    8 !     fin()
    9
 
-__main__: exc-TF_{:d}.py: 6 traceable; 4 covered; 0 ignored; 0 ignored but covered; 2 not covered.
+__main__: exc-TF_%s.py: 6 traceable; 4 covered; 0 ignored; 0 ignored but covered; 2 not covered.

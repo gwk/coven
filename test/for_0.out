@@ -1,7 +1,7 @@
 ----------------
 Coverage Report:
 
-__main__: for_{}.py:
+__main__: for_%s.py:
    2
    3
    4   def top(arg):
@@ -20,4 +20,4 @@ __main__: for_{}.py:
   17 % def for_(): pass
   18   def else_(): pass
 
-__main__: for_{}.py: 12 traceable; 5 covered; 0 ignored; 0 ignored but covered; 7 not covered.
+__main__: for_%s.py: 12 traceable; 5 covered; 0 ignored; 0 ignored but covered; 7 not covered.
